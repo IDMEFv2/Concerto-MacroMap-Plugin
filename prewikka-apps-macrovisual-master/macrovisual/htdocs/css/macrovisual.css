@@ -1,0 +1,367 @@
+/* #initDiv { */
+    /* height: calc(100vh - 12rem);
+    background-color: rgb(128, 128, 128, 0.3);
+    z-index: 29;
+    position: relative;
+    cursor: pointer; */
+/* } */
+
+#initDiv {
+    position: absolute;
+    top: 0;
+    left: 0; 
+    height: calc(100vh - 12rem);
+    width: 100%;
+    background-color: rgba(128, 128, 128);
+    z-index: 29;
+    cursor: pointer;
+}
+/* #instructions-div {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+} */
+
+#instructions-div {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 1.5rem;
+}
+
+#instruction-text {
+    color: white;
+}
+
+.w-100 {
+    width: 100%;
+}
+
+.placement-popup h3, .placement-popup label {
+    color: #334155;
+}
+
+.custom-input {
+    padding: 0.5rem;
+    border-radius: 5px;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+}
+
+.custom-select {
+    min-height: 3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #334155;
+}
+
+.custom-button {
+    padding: 5px 10px;
+    background: transparent;
+    border: 1px solid #c7c7c7;
+    border-radius: 5px;
+    color: #334155;
+}
+
+.custom-button:hover, .details-rename:hover {
+    background-color: #ececec;
+    cursor: pointer;
+}
+
+.details-delete:hover {
+    background-color: #d9534f;
+    color: white;
+    cursor: pointer;
+}
+
+.controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.controls-div button, .edit-controls button {
+    box-sizing: border-box; 
+    padding: 5px; 
+    border: 2px solid rgba(0,0,0,0.2); 
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.controls-div button:hover, .edit-controls button:hover {
+    background-color: #e5e5e5;
+}
+
+.controls-div div:first-child button, .edit-controls div:first-child button{
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+.controls-div div:not(:first-child):not(:last-child) button, .edit-controls div:not(:first-child):not(:last-child) button{
+    border-top: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.controls-div div:last-child button, .edit-controls div:last-child button {
+    border-top: none;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.placement-popup, .details-popup {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    z-index: 20;
+    background-color: white;
+    padding: 1rem;
+}
+
+.details-popup {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    z-index: 20;
+    background-color: white;
+    padding: 1rem;
+}
+
+.placement-content, .details-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.my-0 {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.mb-0 {
+    margin-bottom: 0px;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+.font-bold {
+    font-weight: 800;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.content-between {
+    justify-content: space-between;
+}
+
+.align-center {
+    align-items: center;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.gap-1 {
+    gap: 1rem;
+}
+
+.gap-half {
+    gap: 0.5rem;
+}
+
+.input-div-width {
+    width: 50%;
+}
+
+.content-right {
+    justify-content: right;
+}
+
+.container-map {
+    position: relative;
+    width: 100%;     
+}
+
+#map {
+    width: 100%;
+    height: calc(100vh - 12rem);
+    position: relative;
+    z-index: 1;
+}
+#canvas-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.popup-width {
+    width: 40rem;
+}
+
+.popup-mask {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 100%;
+    background-color: rgba(77, 77, 77, 0.5);
+    z-index: 19;
+}
+
+.alerts-div {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+}
+
+.high-alert {
+    background-color: #d9534f;
+    width: 25%;
+    height: 10rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.medium-alert {
+    background-color: #f0ad4e;
+    width: 25%;
+    height: 10rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.low-alert {
+    background-color: #5cb85c;
+    width: 25%;
+    height: 10rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.info-alert {
+    background-color: #5bc0de;
+    width: 25%;
+    height: 10rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.alert-number {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin-top: 0px;
+    margin-top: 0px;
+}
+
+.fixed-pop-up {
+    position: fixed;
+    right: 0.313rem;
+    top: 0.313rem;
+    border: 1px #fd7d7d solid;
+    border-radius: 10px;
+    width: 30rem;
+    background-color: #fcd0d0;
+    transform: translateY(-150%);
+    opacity: 0;
+    transition: transform 0.5s ease, opacity 0.5s ease;
+    z-index: 19;
+}
+
+.popup-content {
+    padding: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+}
+
+.pop-up-text {
+    font-weight: lighter;
+    margin: 0px
+}
+
+.pop-up-visible {
+    transform: translateY(100px); 
+    opacity: 1;
+}
+
+.pop-up-hidden {
+    transform: translateY(-150%);
+    opacity: 0; 
+}
+
+.mt-08{
+    margin-top:0.8rem;
+}
+
+.mt-11{
+    margin-top:1.1rem;
+}
+
+.mr-02{
+    margin-right:0.1rem;
+}
+
+.details-button {
+    padding: 5px 10px;
+    background: transparent;
+    border-radius: 5px;
+    color: #334155;
+}
+
+.details-rename {
+    border: 1px solid #c7c7c7;
+    color: #334155;
+}
+
+.details-delete {
+    border: 1px solid #d9534f;
+    color: #d9534f;
+}
+
+@media (max-width: 767px) { 
+    #main {
+        margin-top: 7.717rem;
+    }
+}
