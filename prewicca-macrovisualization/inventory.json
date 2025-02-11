@@ -1,0 +1,103 @@
+{
+  "inventory": [
+    {
+      "id": 1,
+      "username": "admin",
+      "asset_position_list": [
+        {
+          "name": "NRD",
+          "iconType": "building",
+          "lat": 54.6872,
+          "lng": 25.2797,
+          "marker": null,
+          "id": 0
+        },
+        {
+          "name": "BeDisruptive",
+          "iconType": "building",
+          "lat": 40.4168,
+          "lng": -3.7038,
+          "marker": null,
+          "id": 1
+        },
+        {
+          "name": "Elmisoftware",
+          "iconType": "building",
+          "lat": 38.1157,
+          "lng": 13.3615,
+          "marker": null,
+          "id": 2
+        },
+        {
+          "name": "Nicos",
+          "iconType": "building",
+          "lat": 51.9607,
+          "lng": 7.6261,
+          "marker": null,
+          "id": 3
+        },
+        {
+          "name": "CEA",
+          "iconType": "central_soc",
+          "lat": 43.6047,
+          "lng": 1.4442,
+          "marker": null,
+          "id": 4
+        }
+      ],
+      "default_position": "POSIZIONE_DI_DEFAULT",
+      "saved_position": {
+        "lat": 37.51735099503349,
+        "lng": 13.833160400390627
+      }
+    },
+    {
+      "id": 2,
+      "username": "compagno",
+      "asset_position_list": [
+        {
+          "name": "NRD",
+          "iconType": "building",
+          "lat": 54.6872,
+          "lng": 25.2797,
+          "marker": null,
+          "id": 0
+        },
+        {
+          "name": "BeDisruptive",
+          "iconType": "building",
+          "lat": 40.4168,
+          "lng": -3.7038,
+          "marker": null,
+          "id": 1
+        },
+        {
+          "name": "Elmisoftware",
+          "iconType": "building",
+          "lat": 38.1157,
+          "lng": 13.3615,
+          "marker": null,
+          "id": 2
+        },
+        {
+          "name": "Nicos",
+          "iconType": "building",
+          "lat": 51.9607,
+          "lng": 7.6261,
+          "marker": null,
+          "id": 3
+        },
+        {
+          "name": "CEA",
+          "iconType": "central_soc",
+          "lat": 43.6047,
+          "lng": 1.4442,
+          "marker": null,
+          "id": 4
+        }
+      ],
+      "default_position": "POSIZIONE_DI_DEFAULT",
+      "saved_position": "POSIZIONE_SALVATA"
+    }
+  ]
+}

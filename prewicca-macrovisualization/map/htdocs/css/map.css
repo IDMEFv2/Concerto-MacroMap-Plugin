@@ -1,43 +1,5 @@
-/* #initDiv { */
-    /* height: calc(100vh - 12rem);
-    background-color: rgb(128, 128, 128, 0.3);
-    z-index: 29;
-    position: relative;
-    cursor: pointer; */
-/* } */
-
-#initDiv {
-    position: absolute;
-    top: 0;
-    left: 0; 
-    height: calc(100vh - 12rem);
-    width: 100%;
-    background-color: rgba(128, 128, 128);
-    z-index: 29;
-    cursor: pointer;
-}
-/* #instructions-div {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-} */
-
-#instructions-div {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 1.5rem;
-}
-
-#instruction-text {
-    color: white;
-}
-
-.w-100 {
-    width: 100%;
+html {
+    height: 100vh;
 }
 
 .placement-popup h3, .placement-popup label {
@@ -45,6 +7,7 @@
 }
 
 .custom-input {
+    font-size: 0.8rem;
     padding: 0.5rem;
     border-radius: 5px;
     border: 1px solid #cbd5e1;
@@ -52,7 +15,7 @@
 }
 
 .custom-select {
-    min-height: 3rem;
+    height: 2.063rem;
     border: 1px solid #cbd5e1;
     border-radius: 5px;
     color: #334155;
@@ -148,6 +111,10 @@
     gap: 1rem;
 }
 
+.details-content {
+    width: 25.199rem;
+}
+
 .my-0 {
     margin-top: 0;
     margin-bottom: 0;
@@ -194,24 +161,26 @@
 }
 
 .input-div-width {
-    width: 50%;
+    width: 12.1rem;
 }
 
 .content-right {
     justify-content: right;
 }
 
-.container-map {
+.container {
     position: relative;
-    width: 100%;     
+    width: 100%;
+    top: 35px;     
 }
 
 #map {
     width: 100%;
-    height: calc(100vh - 12rem);
+    height: calc(100vh - 1rem);
     position: relative;
     z-index: 1;
 }
+
 #canvas-container {
     position: absolute;
     top: 0;
@@ -220,8 +189,32 @@
     z-index: 2;
 }
 
-.popup-width {
-    width: 40rem;
+#canvas-container2 {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 3;
+}
+
+
+#tooltip-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.tooltip {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 .popup-mask {
@@ -245,9 +238,7 @@
 .high-alert {
     background-color: #d9534f;
     width: 25%;
-    height: 10rem;
-    padding-top: 1rem;
-    padding-bottom: 1rem;
+    height: 7rem;
     display: flex;
     justify-content: center;
     position: relative;
@@ -256,9 +247,7 @@
 .medium-alert {
     background-color: #f0ad4e;
     width: 25%;
-    height: 10rem;
-    padding-top: 1rem;
-    padding-bottom: 1rem;
+    height: 7rem;
     display: flex;
     justify-content: center;
     position: relative;
@@ -267,9 +256,7 @@
 .low-alert {
     background-color: #5cb85c;
     width: 25%;
-    height: 10rem;
-    padding-top: 1rem;
-    padding-bottom: 1rem;
+    height: 7rem;
     display: flex;
     justify-content: center;
     position: relative;
@@ -278,9 +265,7 @@
 .info-alert {
     background-color: #5bc0de;
     width: 25%;
-    height: 10rem;
-    padding-top: 1rem;
-    padding-bottom: 1rem;
+    height: 7rem;
     display: flex;
     justify-content: center;
     position: relative;
@@ -301,16 +286,16 @@
     top: 0.313rem;
     border: 1px #fd7d7d solid;
     border-radius: 10px;
-    width: 30rem;
+    width: 20rem;
     background-color: #fcd0d0;
-    transform: translateY(-150%);
-    opacity: 0;
-    transition: transform 0.5s ease, opacity 0.5s ease;
+    transform: translateY(-150%); /* Posiziona inizialmente il pop-up fuori dalla vista */
+    opacity: 0; /* Inizialmente invisibile */
+    transition: transform 0.5s ease, opacity 0.5s ease; /* Transizione per lo scorrimento e l'opacità */
     z-index: 19;
 }
 
 .popup-content {
-    padding: 1rem;
+    padding: 1rem 0.5rem;
     display: flex;
     gap: 0.5rem;
     justify-content: space-between;
@@ -322,22 +307,25 @@
 }
 
 .pop-up-visible {
-    transform: translateY(100px); 
-    opacity: 1;
+    transform: translateY(0); /* Scorre verso il basso nella sua posizione */
+    opacity: 1; /* Rende visibile l'elemento */
 }
 
+/* Nascosto */
 .pop-up-hidden {
-    transform: translateY(-150%);
-    opacity: 0; 
+    transform: translateY(-150%); /* Scorre verso l'alto, fuori dalla vista */
+    opacity: 0; /* Nasconde l'elemento */
 }
 
 .mt-08{
     margin-top:0.8rem;
 }
 
+
 .mt-11{
     margin-top:1.1rem;
 }
+
 
 .mr-02{
     margin-right:0.1rem;
@@ -360,8 +348,136 @@
     color: #d9534f;
 }
 
-@media (max-width: 767px) { 
-    #main {
-        margin-top: 7.717rem;
-    }
+.reset-button {
+    position: absolute;
+    top: 80px;
+    left: 26px;
+    z-index: 1000;
+    padding: 2.5px 5px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.reset-button:hover {
+    background-color: #0056b3;
+}
+
+#reset-view svg {
+    width: 24px;
+    height: 24px;
+    fill: black; /* Modifica il colore dell'icona */
+    color: white;
+}
+
+
+.save-button {
+    position: absolute;
+    top: 120px;
+    left: 26px;
+    z-index: 1000;
+    padding: 2.5px 5px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.save-button:hover {
+    background-color: #0056b3;
+}
+
+#save-view svg {
+    width: 24px;
+    height: 24px;
+    fill: white; /* Modifica il colore dell'icona */
+    color: white;
+}
+
+.back-button {
+    position: absolute;
+    top: 160px;
+    left: 26px;
+    z-index: 1000;
+    padding: 2.5px 5px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.back-button:hover {
+    background-color: #0056b3;
+}
+
+#back-view svg {
+    width: 24px;
+    height: 24px;
+    fill: white; /* Modifica il colore dell'icona */
+    color: white;
+}
+
+.modal {
+    position: fixed;
+    top: 10%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 20px 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    font-size: 16px;
+    text-align: center;
+    display: none;
+    width: 300px;
+    height: 100px;
+}
+
+.modal.show {
+    display: block;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+#initDiv {
+    display: flex;              /* Usa flexbox per il layout */
+    justify-content: center;    /* Centra orizzontalmente */
+    align-items: center;        /* Centra verticalmente */
+    height: 100vh;              /* Imposta l'altezza del contenitore per coprire l'intera finestra */
+    background-color: #f0f0f0; /* Colore di sfondo (opzionale) */
+}
+
+#instructions-div {
+    text-align: center;         /* Allinea il testo al centro */
+    padding: 20px;              /* Aggiungi un po' di spazio interno */
+    background-color: grey;    /* Colore di sfondo per il div delle istruzioni */
+    border-radius: 8px;         /* Bordo arrotondato (opzionale) */
+    color: white;
+}
+
+#instruction-text {
+    font-size: 20px;            /* Imposta la dimensione del testo */
+    font-weight: bold;          /* Imposta il testo in grassetto */
+}
+
+#initButton {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100vh; /* Copre tutta la finestra */
+    background-color: grey; /* Sfondo scuro semi-trasparente */
+    color: white;
+    text-align: center;
+    border: none;
+    cursor: pointer;
 }
