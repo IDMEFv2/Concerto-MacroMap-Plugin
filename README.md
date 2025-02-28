@@ -1,9 +1,9 @@
 1. Installation  
 ==============
 
-No extra steps should be required to install this plugin
+- No extra steps should be required to install this plugin
 
-3. Implemented features  
+2. Implemented features  
 ==============
 
 - A static map that uses leaflet.js and konva.js to display assets that have been added to the database by the user.
