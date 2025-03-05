@@ -4,7 +4,8 @@
 ```bash
 python setup.py install
 ```
-- Navigate to the "?" menu and open "Apps"
+- Restart Prewikka
+- Open the GUI, navigate to the "?" menu and open "Apps"
 - Click on the "Install update" button in the "Plugin Maintenance" tab  
 - You can now find the plugin in the "?" menu  
 
