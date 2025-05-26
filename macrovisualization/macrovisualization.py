@@ -1,6 +1,9 @@
 import pkg_resources
+import re
+import ipaddress
+import xml.etree.ElementTree as ET
 
-from prewikka import database, template, view
+from prewikka import database, template, view, error, mainmenu, response
 from prewikka.dataprovider import Criterion
 
 class Macrovisualization(object):
@@ -55,6 +58,12 @@ class MapDatabase(database.DatabaseHelper):
         return result
 
     def insert_asset_into_db(self, user_id, asset_name, icon_type, asset_ip, lat, lng):
+
+        message = self.validate_asset(asset_name, icon_type, asset_ip, lat, lng)
+
+        if message != "":
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("The asset was rejected for the following reasons:" + message))
+
         insert_query = f"""
             INSERT INTO Prewikka_macrovisualization_assets (user_id, asset_name, icon_type, asset_ip, lat, lng)
             VALUES ('{user_id}', '{asset_name}', '{icon_type}', '{asset_ip}', '{lat}', '{lng}');
@@ -64,6 +73,12 @@ class MapDatabase(database.DatabaseHelper):
         return {"result": "Asset added"}
 
     def edit_asset_in_db(self, asset_id, user_id, asset_name, icon_type, asset_ip, lat, lng):
+
+        message = self.validate_asset(asset_name, icon_type, asset_ip, lat, lng)
+
+        if message != "":
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("The asset can't be edited for the following reasons:" + message))
+
         edit_query = f"""
             UPDATE Prewikka_macrovisualization_assets
             SET user_id = '{user_id}',
@@ -88,6 +103,11 @@ class MapDatabase(database.DatabaseHelper):
         return {"result": "Asset removed"}
 
     def add_icon_to_db(self, user_id, class_name, html):
+        message = self.validate_icon(class_name, html)
+
+        if message != "":
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("The icon was rejected for the following reasons:" + message))
+
         insert_query = f"""
             INSERT INTO Prewikka_macrovisualization_icons (user_id, is_default, class_name, html)
             VALUES ('{user_id}', false, '{class_name}', '{html}');
@@ -108,7 +128,7 @@ class MapDatabase(database.DatabaseHelper):
         rows = self.query(query)
         result = []
 
-        # If they exist their data is returned
+        # If they exist they are returned
         if rows:
             for row in rows:
                 result.append({
@@ -119,7 +139,7 @@ class MapDatabase(database.DatabaseHelper):
                     "saved_zoom": row[4]
                 })
         else:
-            # Otherwise it is created with default values
+            # Otherwise they are created with default values
             insert_query = f"""
                 INSERT INTO prewikka_macrovisualization_settings (user_id, saved_position_lat, saved_position_lng, saved_zoom)
                 VALUES ('{user_id}', 47, 10, 6)
@@ -148,6 +168,60 @@ class MapDatabase(database.DatabaseHelper):
         self.query(update_query)
         return {"result": "Update completed"}
 
+    def validate_asset(self, asset_name, icon_type, asset_ip, lat, lng):
+        message = ""
+
+        if asset_ip:
+            try:
+                ipaddress.ip_address(asset_ip)  # Controlla sia IPv4 che IPv6
+            except ValueError:
+                message += "\n- The provided IP is invalid"
+        else:
+            message += "\n- No value provided for IP"
+
+        if not asset_name:
+            message += "\n- No value provided for name"
+
+        if not icon_type:
+            message += "\n- No value provided for icon type"
+
+        try:
+            lat = float(lat)
+            if not (-90 <= lat <= 90):
+                message += "\n- The provided latitude is out of range"
+        except ValueError:
+            message += "\n- The provided latitude is invalid"
+
+        try:
+            lng = float(lng)
+            if not (-180 <= lng <= 180):
+                message += "\n- The provided longitude is out of range"
+        except ValueError:
+            message += "\n- The provided longitude is invalid"
+
+        return message
+
+    def validate_icon(self, class_name, html):
+        message = ""
+        if not class_name:
+            message += "\n- No value provided for name"
+        print(html)
+        if not html:
+            message += "\n- No SVG provided"
+        else:
+            try:
+                # Parsing the SVG string
+                element = ET.fromstring(html)
+                
+                # Extract the tag name without the namespace
+                tag_name = element.tag.split('}')[1] if '}' in element.tag else element.tag
+                
+                # Check if the tag is in the list of valid SVG tags
+                if tag_name not in ["svg", "circle", "rect", "line", "path", "text", "g", "ellipse", "polygon", "polyline"]:
+                    message += "\n- The provided SVG must be a valid HTML tag"
+            except ET.ParseError:
+                message = "\n- An error has occurred during the validation, please try again"
+        return message
 
 class macrovisualizationView(view.View):
     plugin_htdocs = (("macrovisualization", pkg_resources.resource_filename(__name__, 'htdocs')),)
@@ -156,9 +230,9 @@ class macrovisualizationView(view.View):
         view.View.__init__(self)
         self._db = MapDatabase()
 
-    @view.route("/mapplugin", menu=("MapPlugin", "MapPlugin"))
+    @view.route("/macrovisualization", methods=["GET", "POST"], permissions=[N_("IDMEF_VIEW")], menu=(N_("Alerts"), N_("Macrovisualization")))
     def listing(self):
-        return template.PrewikkaTemplate(__name__, "templates/macrovisualization.mak").render()
+        return view.ViewResponse(template.PrewikkaTemplate(__name__, "templates/macrovisualization.mak").render(), menu=mainmenu.HTMLMainMenu())
 
     @view.route("/get_alerts_by_ip", methods=["POST"])
     def get_alerts_by_ip(self):
@@ -250,6 +324,7 @@ class macrovisualizationView(view.View):
         result = self._db.get_user_settings_from_db(user_id)
         return result
 
+
     @view.route("/update_user_settings", methods=["POST"])
     def update_user_settings(self):
         user_id = env.request.parameters.get("user_id")
@@ -259,3 +334,25 @@ class macrovisualizationView(view.View):
 
         result = self._db.update_user_settings_db(user_id, saved_position_lat, saved_position_lng, saved_zoom)
         return result
+
+    @view.route("/navigato_to_table", methods=["POST"])
+    def navigato_to_table(self):
+        ip = env.request.parameters.get("ip")
+        criteria = Criterion()
+        link = None
+        if ip is not None:  
+            criteria += Criterion('idmefv2.target.ip', '=', ip)
+            linkview = env.viewmanager.get(datatype="idmefv2", keywords=["listing"])
+            if linkview:
+                link = linkview[-1].make_url(criteria=criteria, **env.request.menu.get_parameters())
+            return response.PrewikkaRedirectResponse(link)
+
+        return {"status": "no_match", "data": []}
+
+    @view.route("/get_time", methods=["GET"])
+    def get_time(self):
+        return {
+            "start_date": env.request.menu.start, 
+            "end_date": env.request.menu.end
+        }
+        

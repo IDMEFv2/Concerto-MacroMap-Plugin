@@ -8,21 +8,9 @@
   type="text/css"
   href="macrovisualization/css/macrovisualization.css"
 />
-<link
-  rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
-/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
-<div class="plugin-container">
-  <button id="initButton" type="button" onclick="openMap()">
-    <div id="instructions-div">
-      <h2 id="instruction-text">Click to open the map</h2>
-    </div>
-  </button>
-
-  <!-- Custom buttons to add fuctions to the map -->
-
+<div id="buttons-container" class="plugin-container hidden">
   <div class="map-controls">
     <button
       type="button"
@@ -107,7 +95,7 @@
     </button>
   </div>
 
-  <!-- Messages used to show successful operations -->
+  <!-- Messages used to show success, might change them later -->
 
   <div id="savedModal" class="modal-custom hidden">
     <p>Position Saved!</p>
@@ -121,7 +109,7 @@
     <p>No Saved Position Found!</p>
   </div>
 
-  <!-- Divs used by leaflet.js and konva.js -->
+  <!-- Divs used by konva.js and leaflet.js -->
 
   <div id="map"></div>
   <div id="canvas-container"></div>
@@ -130,7 +118,7 @@
 <!-- Modal to insert new markers -->
 
 <div id="insert-modal" class="crud-modal-border crud-modal">
-  <div class="modal-header bg-primary">
+  <div class="custom-modal-header bg-primary">
     <div class="modal-row justify-between">
       <h3>Add a new marker</h3>
       <div class="cursor-pointer flex align-center">
@@ -154,7 +142,7 @@
     </div>
   </div>
 
-  <div class="modal-body">
+  <div class="custom-modal-body">
     <div class="modal-row">
       <div class="w-1/2 crud-modal-section pr-1/2">
         <label for="ip-address-add">IP address:</label>
@@ -220,7 +208,7 @@
 <!-- Modal to edit markers -->
 
 <div id="edit-modal" class="crud-modal-border crud-modal">
-  <div class="modal-header bg-primary">
+  <div class="custom-modal-header bg-primary">
     <div class="modal-row justify-between">
       <h3>Edit a marker</h3>
       <div class="cursor-pointer flex align-center">
@@ -244,7 +232,7 @@
     </div>
   </div>
 
-  <div class="modal-body">
+  <div class="custom-modal-body">
     <div class="modal-row">
       <div class="w-1/2 crud-modal-section pr-1/2">
         <label for="ip-address-edit">IP address:</label>
@@ -304,7 +292,7 @@
 <!-- Icon addition modal -->
 
 <div id="icon-modal" class="crud-modal-border crud-modal">
-  <div class="modal-header bg-primary">
+  <div class="custom-modal-header bg-primary">
     <div class="modal-row justify-between">
       <h3>Add a new icon</h3>
       <div class="cursor-pointer flex align-center">
@@ -328,7 +316,7 @@
     </div>
   </div>
 
-  <div class="modal-body">
+  <div class="custom-modal-body">
     <div class="modal-row">
       <div class="w-full crud-modal-section">
         <label for="icon-name">Icon name:</label>
@@ -352,45 +340,32 @@
       <button onclick="addNewMapIcon()" id="edit-asset" type="button" class="btn btn-primary mt-1">Confirm</button>
     </div>
   </div>
-
-</div>
-
-<!-- Date selector -->
-
-<div id="date_filter_container" class="settings-div">
-  <div class="form-group-date">
-    <input
-      type="text"
-      id="start_date"
-      name="timeline_start_map"
-      class="form-control timeline_start_map"
-      data-toggle="tooltip"
-      title="Start date"
-      data-name="timeline_start_map"
-    />
-  </div>
-  <div class="form-group-date">
-    <input
-      type="text"
-      id="end_date"
-      name="timeline_end_map"
-      class="form-control timeline_end_map"
-      data-toggle="tooltip"
-      title="End date"
-      data-name="timeline_end_map"
-    />
-  </div>
-  <button id="submit_date_filter" class="btn btn-primary" type="button">
-    <i class="fa fa-search fa-lg fa-fw"></i>
-  </button>
 </div>
 
 <div id="modal-mask" class="modal-mask"></div>
+
+<!-- Context menu -->
+
+<div id="PopoverOption" class="popover-options">
+  <ul class="popover dropdown-menu dropdown-menu-theme multi-level" role="menu" aria-labelledby="dropdownMenu">
+    <div class="arrow"></div>
+    <li class="dropdown-submenu">
+      <a>Search</a>
+      <ul class="dropdown-menu dropdown-menu-theme">
+        <li><a id="alerts_table" class="add_search">Go to alerts table</a></li>
+      </ul>
+    </li>
+  </ul>
+</div>
 
 <script type="text/javascript">
   $LAB
     .script("macrovisualization/js/macrovisualization.js")
     .script("https://unpkg.com/leaflet/dist/leaflet.js")
     .script("https://unpkg.com/konva/konva.min.js")
-    .script("prewikka/js/moment.min.js");
+    .script("prewikka/js/moment.min.js")
+    .wait(function() {
+      initializeMap();
+      fadeIn();
+    });
 </script>

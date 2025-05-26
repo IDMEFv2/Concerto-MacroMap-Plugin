@@ -12,6 +12,7 @@ var db_icons = [];
 var savedPosition;
 var centerCoordinates;
 var zoom;
+var selectedAssetIP;
 
 var assetToEdit = "";
 var user_id = "";
@@ -21,9 +22,6 @@ async function initializeMap() {
 
   await setUserId()
 
-  defaultStart = getDefaultDates("start");
-  defaultEnd = getDefaultDates("end");
-  initDateFilter(defaultStart, defaultEnd, "dd/mm/y");
   savedPosition = await initMapPosition();
 
   const centerCoordinates = savedPosition
@@ -113,12 +111,18 @@ async function initializeMap() {
     $('#selected-lng-add').val(e.latlng.lng);
     $('#insert-modal').css('display', 'flex');
     $('#modal-mask').css('display', 'flex');
+    $("#PopoverOption").hide();
   });
 
   map.on("movestart", function () {
     alertLayer.hide();
     alertLayer.draw();
+    $("#PopoverOption").hide();
   });
+
+  $("#alerts_table").on("click", function() {
+    navigato_to_table(selectedAssetIP)
+  })
 
   map.on("moveend", function () {
     alertLayer.show();
@@ -126,6 +130,10 @@ async function initializeMap() {
   });
 
   await initMapContent()
+}
+
+function fadeIn() {
+  $('#buttons-container').removeClass('hidden').addClass('visible');
 }
 
 // Function used to create the Map Markers
@@ -252,6 +260,7 @@ function DrawNewAlert(start_date, end_date, obj) {
 
             marker.on('click', function(e) {
               assetToEdit = obj.id;
+              $("#PopoverOption").hide();
               $('#selected-lat-edit').val(obj.lat);
               $('#selected-lng-edit').val(obj.lng);
               $('#ip-address-edit').val(obj.ip);
@@ -261,6 +270,12 @@ function DrawNewAlert(start_date, end_date, obj) {
               $('#modal-mask').css('display', 'flex');
             });
 
+            marker.on('contextmenu', function(e) {
+              var node = $(this._icon);
+              selectedAssetIP = obj.ip;
+              show_popover(node);
+            });
+            
             drawAlerts();
           },
           error: function (error) {
@@ -329,6 +344,7 @@ function getAlertColor(type) {
 }
 
 async function savePosition() {
+  $("#PopoverOption").hide();
   const new_center = map.getCenter();
   const new_zoom = map.getZoom();
 
@@ -372,7 +388,7 @@ async function savePosition() {
 }
 
 function returnToSaved() {
-
+  $("#PopoverOption").hide();
   if (savedPosition && savedPosition.center && savedPosition.zoom) {
     console.log(savedPosition)
     const { lat, lng } = savedPosition.center;
@@ -399,6 +415,7 @@ function returnToSaved() {
 }
 
 function resetPosition() {
+  $("#PopoverOption").hide();
   map.setView(initialCoordinates, initialZoom);
 
   const modal = document.getElementById("resetModal");
@@ -411,134 +428,24 @@ function resetPosition() {
   }, 2000);
 }
 
-async function openMap() {
-  await initializeMap();
-  document.getElementById("initButton").style.display = "none";
-}
-
-function _mergedict(obj1, obj2) {
-  return $.extend({}, obj1, obj2);
-}
-
-function DatetimePicker(input, date, options, delta) {
-  var that = {};
-  var hidden_input = $(input).parent().find("input[type='hidden'][name=" + input.data('name') + "]");
-
-  if (hidden_input.length === 0) {
-      hidden_input = $('<input/>').attr({ type: 'hidden', name: input.data('name') });
-      hidden_input.appendTo(input.parent());
-  }
-
-  hidden_input.attr("value", date);
-
-  if (!delta)
-      delta = 0;
-
-  that.get_value = function() {
-      return input.datetimepicker("getDate");
-  };
-
-  that.set_date = function(date) {
-      var dt = new Date(moment(date));
-      input.datetimepicker("setDate", dt);
-      _update_input(dt);
-  };
-
-  function _timestamp(dt) {
-      return (dt.getTime() - (dt.getTimezoneOffset() * 60000)) / 1000;
-  }
-
-  function _update_input(dt) {
-      hidden_input.val((dt) ? _timestamp(dt) : _timestamp(that.get_value()) + delta);
-  }
-
-  input.datetimepicker(_mergedict(options, {
-      "onSelect": function() {
-          _update_input();
-          if ("onSelect" in options)
-              options["onSelect"]();
-      },
-      "onClose": function() {
-          _update_input();
-          if ("onClose" in options)
-              options["onClose"]();
-      }
-  }));
-
-  that.set_date(date);
-  return that;
-}
-
-function initDateFilter(start, end, date_format) {
-  var root = $("#date_filter_container");
+async function getDates() {
+  var dates = await get_time();
   
-  var options = {
-      dateFormat: date_format,
-      onSelect: updateDate,
-      onClose: updateDate
-  };
-
-  var start_picker = DatetimePicker(root.find(".timeline_start_map"), start, options);
-  var end_picker   = DatetimePicker(root.find(".timeline_end_map"), end, options, 59);
-
-  function updateDate() {
-    var startDate = start_picker.get_value();
-    var endDate = end_picker.get_value();
-    var error = (startDate > endDate);
-
-    root.find(".form-group-date").toggleClass("has-error", error);
-
-    $("#submit_date_filter").prop("disabled", error);
-
-    if (error) {
-        console.error("Errore: la data di inizio è maggiore di quella di fine.");
-    }
-  }
-
-  $("#submit_date_filter").on("click", function() {
-      body = { 
-        user_id: user_id, 
-      }
-      if (!$(this).prop("disabled")) {
-        $.ajax({
-          url: "/get_map_data",
-          type: "POST",
-          data: body,
-          success: function (data) {
-            alertLayer.destroyChildren();
-            existingAlerts = [];
-
-            json_data = data;
-            const assetList = json_data.asset_position_list;
-            
-            assetList.forEach((markerObj) => {
-              DrawNewAlert(convertToISO($("#start_date").val()), convertToISO($("#end_date").val()), markerObj);
-            });
-          },
-          error: function (error) {
-            console.log(`Error ${error}`);
-          },
-        });
-      }
-  });
-}
-
-function getDefaultDates(type) {
-  var dt;
-  if (type === "end") {
-    dt = moment();
-    dt.hour(23).minute(59).second(59).millisecond(0);
-  } else if (type === "start") {
-    dt = moment().subtract(1, 'months');
-    dt.hour(0).minute(0).second(0).millisecond(0);
-  } else {
+  if (!dates.start_date || !dates.end_date) {
     return null;
   }
-  return dt;
+
+  const startDate = convertToISO(dates.start_date);
+  const endDate = convertToISO(dates.end_date);
+
+  return {
+    start_date: startDate,
+    end_date: endDate
+  };
 }
 
 function convertToISO(dateStr) {
-  var dt = moment(dateStr, "DD-MM-YY HH:mm");
+  var dt = moment.utc(dateStr, "YYYY-MM-DD HH:mm:ssZ");
   return dt.format("YYYY-MM-DD HH:mm:ss.SSSSSS+00:00");
 }
 
@@ -574,10 +481,12 @@ async function initMapContent() {
     alertLayer.destroyChildren();
     existingAlerts = [];
     const assetList = mapData.asset_position_list;
+    dates = await getDates();
+
     assetList.forEach(markerObj => {
       DrawNewAlert(
-        convertToISO($("#start_date").val()),
-        convertToISO($("#end_date").val()),
+        dates.start_date,
+        dates.end_date,
         markerObj
       );
     });
@@ -588,7 +497,6 @@ async function initMapContent() {
 
 // Function used to obtain the map settings saved by the user
 async function initMapPosition() {
-
   mapPosition = {};
   body = {
     user_id: user_id
@@ -645,10 +553,12 @@ async function submitAsset() {
     existingAlerts = [];
     
     const assetList = data.asset_position_list;
+    dates = await getDates();
+
     assetList.forEach(markerObj => {
       DrawNewAlert(
-        convertToISO($("#start_date").val()),
-        convertToISO($("#end_date").val()),
+        dates.start_date,
+        dates.end_date,
         markerObj
       );
     });
@@ -700,10 +610,12 @@ async function editAsset() {
     existingAlerts = [];
     
     const assetList = data.asset_position_list;
+    dates = await getDates();
+
     assetList.forEach(markerObj => {
       DrawNewAlert(
-        convertToISO($("#start_date").val()),
-        convertToISO($("#end_date").val()),
+        dates.start_date,
+        dates.end_date,
         markerObj
       );
     });
@@ -750,10 +662,12 @@ async function deleteAsset() {
     existingAlerts = [];
     
     const assetList = data.asset_position_list;
+    dates = await getDates();
+
     assetList.forEach(markerObj => {
       DrawNewAlert(
-        convertToISO($("#start_date").val()),
-        convertToISO($("#end_date").val()),
+        dates.start_date,
+        dates.end_date,
         markerObj
       );
     });
@@ -820,11 +734,15 @@ async function addNewMapIcon() {
 }
 
 function openIconModal() {
+  $("#PopoverOption").hide();
   $("#icon-modal").css('display', 'flex');
   $('#modal-mask').css('display', 'flex');
 }
 
 function addFillToSvg(svgString, borderColor = "black", borderWidth = "0.5") {
+  if(svgString == "") {
+    return "";
+  }
   var parser = new DOMParser();
   var svgDoc = parser.parseFromString(svgString, "image/svg+xml");
   
@@ -849,36 +767,68 @@ function addFillToSvg(svgString, borderColor = "black", borderWidth = "0.5") {
   return svgModifiedString;
 }
 
-// Function to refresh automatically the map
-// Not currently being used, we are looking for a better alternative
-function startRefreshing() {
-  let first = true;
-
-  setInterval(function() {
-      if(!first) {
-        $.ajax({
-          url: "/get_map_data",
-          type: "POST",
-          data: body,
-          success: function (data) {
-            alertLayer.destroyChildren();
-            existingAlerts = [];
+async function navigato_to_table(ip) {
+  console.log("Nav:", selectedAssetIP)
+  if(selectedAssetIP) {
+    const body = { 
+      ip: ip
+    };
   
-            json_data = data;
-            const assetList = json_data.asset_position_list;
-            
-            assetList.forEach((markerObj) => {
-              DrawNewAlert(convertToISO($("#start_date").val()), convertToISO($("#end_date").val()), markerObj);
-            });
-          },
-          error: function (error) {
-            console.log(`Error ${error}`);
-          },
-        });
-      }
+    await $.ajax({
+      url: "/navigato_to_table",
+      type: "POST",
+      data: body,
+      contentType: "application/json"
+    });
+  }
+}
 
-      if(first) {
-          first = false;
-      }
-  }, 10000);
+async function get_time() {
+  var time = await $.ajax({
+    url: "/get_time",
+    type: "GET"
+  });
+
+  return time;
+}
+
+function show_popover(node) {
+  var popover = $("#PopoverOption .popover");
+
+  $("#PopoverOption").css({ "visibility": "hidden", "display": "block" });
+
+  var offset = node.offset();
+  var top, left = offset.left - popover.width() / 2 + node.width() / 2;
+
+  popover.find(".dropdown-submenu").removeClass("pull-left");
+  popover.removeClass("bottom top left right menu-left");
+
+  if ( left < 0 ) {
+    /* Handle the case of a narrow column near the left side of the grid */
+    popover.addClass("right");
+    top = offset.top - popover.height() / 2 + node.height() / 2;
+    left = offset.left + node.width();
+  }
+  else if ( left + popover.width() > window.innerWidth ) {
+    /* Handle the case of a narrow column near the right side of the grid */
+    popover.addClass("left");
+    top = offset.top - popover.height() / 2 + node.height() / 2;
+    left = offset.left - popover.width();
+  }
+  /* Otherwise, expand the menu upwards or downwards, and the submenu
+  * leftwards or rightwards, according to where the most space is available */
+  else if ( window.innerHeight - (offset.top + node.height()) > offset.top ) {
+    popover.addClass("bottom");
+    top = offset.top + node.height();
+  }
+  else {
+    popover.addClass("top");
+    top = offset.top - (node.height() / 2 + popover.height());
+  }
+  if ( window.innerWidth - (offset.left + node.width()) < offset.left ) {
+    popover.addClass("menu-left");
+    popover.find(".dropdown-submenu").addClass("pull-left");
+  }
+
+  $("#PopoverOption").css({ "top": top, "left": left, "visibility": "visible" });
 }

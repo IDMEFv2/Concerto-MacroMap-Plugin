@@ -3,7 +3,7 @@ from prewikka import pluginmanager, version
 from .macrovisualization import macrovisualizationView
 
 
-class MacrovisualizationPlugin(pluginmanager.PluginPreload): 
+class Macrovisualization(pluginmanager.PluginPreload): 
     plugin_name = "Macrovisualization"
     plugin_author = version.__author__
     plugin_license = version.__license__

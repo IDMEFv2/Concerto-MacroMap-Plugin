@@ -1,5 +1,9 @@
 /* Generic classes */
 
+p {
+  white-space: pre-line;
+}
+
 html {
   height: 80vh;
 }
@@ -67,6 +71,17 @@ html {
   padding: 0;
 }
 
+.hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+}
+
+.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
 #map {
   width: 100%;
   height: 100%;
@@ -131,7 +146,6 @@ html {
 }
 
 .map-controls > *:first-child {
-  /* First child: 2px top border, 1px bottom border */
   border-top: 2px solid #ccc;
   border-bottom: 1px solid #ccc;
   border-top-right-radius: 5px;
@@ -139,7 +153,6 @@ html {
 }
 
 .map-controls > *:last-child {
-  /* Last child: 1px top border, 2px bottom border */
   border-top: 1px solid #ccc;
   border-bottom: 2px solid #ccc;
   border-bottom-right-radius: 5px;
@@ -214,16 +227,14 @@ html {
 
 .settings-div {
   position: absolute;
-  z-index: 4;
+  z-index: 30;
   display: flex;
   gap: 0.5rem;
   border-radius: 5px;
-  background-color: white;
   padding: 0.5rem;
-  border: 2px solid rgba(0,0,0,0.2);
   width: fit-content;
-  bottom: 10px;
-  left: 10px;
+  bottom: 0;
+  right: 7rem;
 }
 
 .crud-modal {
@@ -237,23 +248,23 @@ html {
   width: 40%;
   background-color: white;
   gap: 0.5rem;
-  z-index: 5;
+  z-index: 32;
   display: none;
 }
 
-.modal-header, .modal-body {
+.custom-modal-header, .custom-modal-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 1.5rem;
 }
 
-.modal-header {
+.custom-modal-header {
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
 }
 
-.modal-body {
+.custom-modal-body {
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
 }
@@ -302,5 +313,64 @@ html {
   width: 100vw;
   height: 100vh;
   background-color: rgba(50, 50, 50, 0.7);
-  z-index: 4;
+  z-index: 31;
+}
+
+/* Popover css */
+#PopoverOption {
+  display: none;
+  position: fixed;
+  word-wrap: break-word;
+  z-index: 100;
+}
+
+#PopoverOption .popover {
+  display: block;
+  font-size: small;
+}
+
+#PopoverOption .popover .top > .arrow {
+  border-bottom-width: 1px;
+}
+
+#PopoverOption .popover .bottom > .arrow {
+  border-top-width: 11px;
+}
+
+.dropdown-submenu {
+  width: 100%;
+}
+
+.dropdown-submenu > .dropdown-menu {
+  font-size: small;
+  margin-left: -1px;
+  margin-top: -6px;
+  max-width: inherit;
+  top: 0;
+}
+
+.dropdown-submenu.disabled:hover > .dropdown-menu {
+  display: none;
+}
+
+.popover.menu-left .dropdown-submenu > a:before {
+  border-color: transparent;
+  border-right-color: #ccc;
+  border-style: solid;
+  border-width: 5px 5px 5px 0;
+  content: " ";
+  display: block;
+  float: left;
+  height: 0;
+  margin-left: -10px;
+  margin-top: 5px;
+  width: 0;
+}
+
+.popover.menu-left .dropdown-submenu > a:after {
+  all: unset;
+}
+
+.popover.menu-left .dropdown-submenu > a {
+  text-align: right;
 }
