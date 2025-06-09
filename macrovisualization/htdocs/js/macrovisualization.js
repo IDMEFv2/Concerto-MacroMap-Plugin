@@ -16,6 +16,7 @@ var selectedAssetIP;
 
 var assetToEdit = "";
 var user_id = "";
+var editMode = false;
 
 // Function to create the map
 async function initializeMap() {
@@ -107,10 +108,12 @@ async function initializeMap() {
   });
 
   map.on('click', function(e) {
-    $('#selected-lat-add').val(e.latlng.lat);
-    $('#selected-lng-add').val(e.latlng.lng);
-    $('#insert-modal').css('display', 'flex');
-    $('#modal-mask').css('display', 'flex');
+    if(editMode) {
+      $('#selected-lat-add').val(e.latlng.lat);
+      $('#selected-lng-add').val(e.latlng.lng);
+      $('#insert-modal').css('display', 'flex');
+      $('#modal-mask').css('display', 'flex');
+    }
     $("#PopoverOption").hide();
   });
 
@@ -259,15 +262,17 @@ function DrawNewAlert(start_date, end_date, obj) {
             obj.marker = marker;
 
             marker.on('click', function(e) {
-              assetToEdit = obj.id;
-              $("#PopoverOption").hide();
-              $('#selected-lat-edit').val(obj.lat);
-              $('#selected-lng-edit').val(obj.lng);
-              $('#ip-address-edit').val(obj.ip);
-              $('#site-name-edit').val(obj.name);
-              $('#icons-dropdown-edit').val(obj.iconType)
-              $('#edit-modal').css('display', 'flex');
-              $('#modal-mask').css('display', 'flex');
+              if(editMode) {
+                assetToEdit = obj.id;
+                $("#PopoverOption").hide();
+                $('#selected-lat-edit').val(obj.lat);
+                $('#selected-lng-edit').val(obj.lng);
+                $('#ip-address-edit').val(obj.ip);
+                $('#site-name-edit').val(obj.name);
+                $('#icons-dropdown-edit').val(obj.iconType)
+                $('#edit-modal').css('display', 'flex');
+                $('#modal-mask').css('display', 'flex');
+              }
             });
 
             marker.on('contextmenu', function(e) {
@@ -737,6 +742,33 @@ function openIconModal() {
   $("#PopoverOption").hide();
   $("#icon-modal").css('display', 'flex');
   $('#modal-mask').css('display', 'flex');
+}
+
+function handleEditMode() {
+  const button = document.getElementById('editModeControl');
+  const svg = document.getElementById('editIcon');
+  const iconButton = document.getElementById('addNewIcon');
+  const savePosButton = document.getElementById('save-position');
+
+  editMode = !editMode;
+
+  if (editMode) {
+    button.title = "Switch to view mode";
+    iconButton.style.display = 'block';
+    savePosButton.style.display = 'block';
+
+    svg.innerHTML = `
+      <path d="m4.481 15.659c-1.334 3.916-1.48 4.232-1.48 4.587 0 .528.46.749.749.749.352 0 .668-.137 4.574-1.492zm1.06-1.061 3.846 3.846 11.321-11.311c.195-.195.293-.45.293-.707 0-.255-.098-.51-.293-.706-.692-.691-1.742-1.74-2.435-2.432-.195-.195-.451-.293-.707-.293-.254 0-.51.098-.706.293z" fill-rule="nonzero"/>
+    `;
+  } else {
+    button.title = "Switch to edit mode";
+    iconButton.style.display = 'none';
+    savePosButton.style.display = 'none';
+
+    svg.innerHTML = `
+      <path d="m11.998 5c-4.078 0-7.742 3.093-9.853 6.483-.096.159-.145.338-.145.517s.048.358.144.517c2.112 3.39 5.776 6.483 9.854 6.483 4.143 0 7.796-3.09 9.864-6.493.092-.156.138-.332.138-.507s-.046-.351-.138-.507c-2.068-3.403-5.721-6.493-9.864-6.493zm.002 3c2.208 0 4 1.792 4 4s-1.792 4-4 4-4-1.792-4-4 1.792-4 4-4zm0 1.5c1.38 0 2.5 1.12 2.5 2.5s-1.12 2.5-2.5 2.5-2.5-1.12-2.5-2.5 1.12-2.5 2.5-2.5z" fill-rule="nonzero"/>
+    `;
+  }
 }
 
 function addFillToSvg(svgString, borderColor = "black", borderWidth = "0.5") {

@@ -7,7 +7,7 @@ python setup.py install
 - Restart Prewikka
 - Open the GUI, navigate to the "?" menu and open "Apps"
 - Click on the "Install update" button in the "Plugin Maintenance" tab  
-- You can now find the plugin in the "?" menu  
+- You can now find the plugin in the Alert section
 
 2. Implemented features  
 ==============  
@@ -16,13 +16,12 @@ python setup.py install
 - A tenant system that only shows each user their own icons and markers.
 - Functions to add, modify and delete the markers placed on the map.
 - Custom buttons used to save and return to the starting position set by the user.
-- A date picker that allows the user to control the time frame the map displays (by default it shows one month).
+- A date picker that allows the user to control the time frame the map displays (shared with the Alerts table).
 - New markers can be added through a modal by simply clicking on the map.
 - Markers can be modified or deleted through a modal by clicking on them.
 - Icons in svg format can be added by the user through a button in the top right corner of the map.
+- Two modes: View and Edit. The map starts in View Mode which only allows to move around and view the assets. In edit mode the user can place new markers, edit existing ones and add new icons.
 
 3. Known bugs and imperfections  
 ==============  
-- There are currently no controls made on the data sent by the various modals to the database, these will be implemented in future versions.
-- The date picker in the bottom left corner of the map changes the date correctly but the time only changes visually at the moment.
 - A function intended to refresh the map automatically is present in the code, it is however not currently used, as there is likely a better way to do it.
