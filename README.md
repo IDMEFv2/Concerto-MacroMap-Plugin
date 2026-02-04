@@ -1,27 +1,102 @@
-1. Installation  
-==============  
-- Download the repository and run   
-```bash
-python setup.py install
-```
-- Restart Prewikka
-- Open the GUI, navigate to the "?" menu and open "Apps"
-- Click on the "Install update" button in the "Plugin Maintenance" tab  
-- You can now find the plugin in the Alert section
+# Prewikka Macro Map Plugin
 
-2. Implemented features  
-==============  
-- A static map that uses leaflet.js and konva.js to display assets that have been added to the database by the user.
-- Integration with the SQL database to save the assets, settings and icons added by the user.
-- A tenant system that only shows each user their own icons and markers.
-- Functions to add, modify and delete the markers placed on the map.
-- Custom buttons used to save and return to the starting position set by the user.
-- A date picker that allows the user to control the time frame the map displays (shared with the Alerts table).
-- New markers can be added through a modal by simply clicking on the map.
-- Markers can be modified or deleted through a modal by clicking on them.
-- Icons in svg format can be added by the user through a button in the top right corner of the map.
-- Two modes: View and Edit. The map starts in View Mode which only allows to move around and view the assets. In edit mode the user can place new markers, edit existing ones and add new icons.
+This plugin provides a geospatial visualization layer for IDMEFv2 alerts within the Concerto SIEM (Prewikka) interface. It places monitored entities on an interactive map and visualizes their alert status in real-time.
 
-3. Known bugs and imperfections  
-==============  
-- A function intended to refresh the map automatically is present in the code, it is however not currently used, as there is likely a better way to do it.
+## Features
+
+### 1. Interactive Map Visualization
+- **Entities**: Displays critical infrastructure dependencies (Airports, Buildings, Nuclear Plants) on a Leaflet-based map.
+- **Status Badges**: Each entity displays a badge summarising the count of active alerts by severity (High, Medium, Low, Info).
+- **Tooltips**: Hovering over entities displays the **Town** name.
+
+### 2. Dynamic Alert Visualization
+- **Color Coding**: Entity icons change color (e.g., Green, Yellow, Red) dynamically based on configurable rules.
+- **Vector Tracking**: Automatically visualizes specific vectors, such as **Drones**, when detected in alerts associated with a monitored entity. The drone appears near the target entity.
+
+### 3. Custom Rule Engine
+Users can define rules directly from the UI to control entity appearance:
+- **Percentage Rules**: Change color if High/Medium/Low alerts exceed a certain percentage of total alerts (e.g., "Turn Red if High Priority alerts >= 50%").
+- **Regex Rules**: Change color if an alert description matches a specific keyword (e.g., "Turn Red if description contains 'Drone'").
+
+### 4. Data Management & Import
+- **CSV Upload**: Bulk import entity definitions (Name, Coordinates, Type) using a CSV file.
+- **Templates**: Download sample CSV and XLSX templates to get started quickly.
+- **Guide**: Built-in guide (Markdown) available for download.
+
+### 5. Context Actions
+Right-click or interact with markers to:
+- **Go to Alerts**: Navigate to the standard alert listing filtered for that specific entity.
+- **Edit Rules**: Open the rule editor for that entity.
+- **Delete**: Remove the marker from the map.
+
+---
+
+## Installation
+
+To install the plugin, you need to execute the installation command inside the Prewikka container and then restart the service.
+
+### Prerequisites
+- The SIEM stack must be running.
+- Access to the `gui` container (via docker/podman).
+
+### Environment Setup
+
+Before installing, you must ensure the plugin source code is accessible inside the `gui` container. The recommended way is to mount the plugin directory as a volume in your `docker-compose.yml`.
+
+1. **Locate your `docker-compose.yml` file**.
+2. **Find the `gui` service definition**.
+3. **Add a volume mapping** linking your local plugin folder to the container's plugin directory:
+
+   ```yaml
+   services:
+     gui:
+       # ... other configurations
+       volumes:
+         - ./prewikka_apps_macro_map:/prewikka/prewikka_apps_macro_map:Z
+         # ... other volumes
+   ```
+
+   *Note: Adjust the local path (`./prewikka_apps_macro_map`) if your repository structure is different.*
+
+4. **Recreate the container** to apply the volume change:
+   ```bash
+   docker-compose up -d gui
+   ```
+
+### Manual Installation Steps
+
+1. **Install the plugin inside the container**:
+   Execute the `setup.py install` command within the running `gui` container.
+   
+   Using Docker Compose (v1):
+   ```bash
+   docker-compose exec gui sh -lc "cd /prewikka/prewikka_apps_macro_map && python3 setup.py install"
+   ```
+   
+   Using Docker Compose (v2):
+   ```bash
+   docker compose exec gui sh -lc "cd /prewikka/prewikka_apps_macro_map && python3 setup.py install"
+   ```
+
+2. **Restart the GUI service**:
+   Reload the service to apply the changes.
+
+   Using Docker Compose (v1):
+   ```bash
+   docker-compose restart gui
+   ```
+
+   Using Docker Compose (v2):
+   ```bash
+   docker compose restart gui
+   ```
+
+3. **Verify Installation**:
+   Check the logs to ensure the service started correctly.
+   ```bash
+   docker-compose logs --tail=30 gui
+   ```
+
+4. **Access the Plugin**:
+   - Open your web browser and log in to the Prewikka interface.
+   - Navigate to **Alerts** > **Macro Map** in the menu.

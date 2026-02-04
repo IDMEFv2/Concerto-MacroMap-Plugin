@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-setup(name="prewikka-apps-macrovisualization",
+setup(name="prewikka-apps-macro_map",
       version="5.2.0",
       author="Marco Compagno",
       author_email="marco_compagno@elmisoftware.com",
@@ -9,18 +9,21 @@ setup(name="prewikka-apps-macrovisualization",
       install_requires=["prewikka >= 5.0.0"],
       entry_points={
           "prewikka.views": [
-              "Macrovisualization = macrovisualization:Macrovisualization",
+              "Macro_Map = macro_map:Macro_Map",
           ],
           'prewikka.updatedb': [
-            'macrovisualization = macrovisualization.sql'
+            'macro_map = macro_map.sql'
         ]
       },
       package_data={
-          "macrovisualization": [
+          "macro_map": [
               "templates/*.mak",
               "sql/*.py",
               "htdocs/css/*.css",
-              "htdocs/js/*.js"
+              "htdocs/js/*.js",
+              "htdocs/samples/*.csv",
+              "htdocs/samples/*.xlsx",
+              "htdocs/samples/*.md"
           ],
       },
       
