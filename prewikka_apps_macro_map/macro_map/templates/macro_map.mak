@@ -72,7 +72,7 @@
         </div>
       </div>
       <div class="flex w-100 justify-between pl-1 pr-1 align-center">
-        <span>V2.0.1</span>
+        <span>V2.1.0</span>
         <button id="submit-csv-button" class="btn btn-primary" type="button">Submit</button>
       </div>
     </div>
