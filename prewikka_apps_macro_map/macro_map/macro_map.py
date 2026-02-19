@@ -7,6 +7,7 @@ import mimetypes
 import pkg_resources
 import csv
 import io
+import json
 
 from enum import Enum
 from dataclasses import dataclass
@@ -324,10 +325,6 @@ class macroMapView(view.View):
         filter_for = ""
         criteria = Criterion()
 
-        with open("/tmp/macro_map_debug.log", "a") as f:
-                f.write(f"entity_name={entity_name}\n")
-                f.flush()
-
         if entity_name is not None:  
             criteria += Criterion('idmefv2.entityname', '=', entity_name)
             criteria += Criterion('idmefv2.create_time', '>=', start_date)
@@ -338,14 +335,11 @@ class macroMapView(view.View):
                 "idmefv2.target.ip", 
                 "idmefv2.description", 
                 "idmefv2.start_time",
-                "idmefv2.vector.name",
+                "idmefv2.vector.id",
                 "idmefv2.vector.category",
                 "idmefv2.vector.geolocation"
                 ], criteria)
 
-            with open("/tmp/macro_map_debug.log", "a") as f:
-                f.write(f"ret={ret}\n")
-                f.flush()
             return {"status": "success", "data": ret}
 
         return {"status": "no_match", "data": []}
@@ -353,10 +347,13 @@ class macroMapView(view.View):
     @view.route("/navigato_to_table", methods=["POST"])
     def navigato_to_table(self):
         entity_name = env.request.parameters.get("entity_name")
+        alert_type = env.request.parameters.get("alert_type")
         criteria = Criterion()
         link = None
         if entity_name is not None:  
             criteria += Criterion('idmefv2.entityname', '=', entity_name)
+            if alert_type is not None:
+                criteria += Criterion('idmefv2.priority', '=', alert_type)
             linkview = env.viewmanager.get(datatype="idmefv2", keywords=["listing"])
             if linkview:
                 link = linkview[-1].make_url(criteria=criteria, **env.request.menu.get_parameters())
@@ -370,3 +367,49 @@ class macroMapView(view.View):
             "start_date": env.request.menu.start, 
             "end_date": env.request.menu.end
         }
+
+    def _get_storage_path(self):
+        storage_dir = "/tmp/prewikka_macro_map"
+        if not os.path.exists(storage_dir):
+            os.makedirs(storage_dir)
+        return os.path.join(storage_dir, "map_state.json")
+
+    @view.route("/macro_map/reset_state", methods=["POST"])
+    def reset_state(self):
+        storage_path = self._get_storage_path()
+        try:
+            if os.path.isfile(storage_path):
+                os.remove(storage_path)
+            return {"status": "success", "message": "Mappa resettata"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    @view.route("/macro_map/save_state", methods=["POST"])
+    def save_state(self):
+        state_data = env.request.parameters.get("state_data")
+        if not state_data:
+            return {"status": "error", "message": "Dati mancanti"}
+
+        storage_path = self._get_storage_path()
+        
+        try:
+            with open(storage_path, "w", encoding="utf-8") as f:
+                f.write(state_data)
+            print(f"DEBUG: Mappa salvata in {storage_path}") 
+            return {"status": "success", "path": storage_path}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    @view.route("/macro_map/load_state", methods=["GET"])
+    def load_state(self):
+        storage_path = self._get_storage_path()
+        
+        if not os.path.isfile(storage_path):
+            return {"status": "no_data", "assets": []}
+
+        try:
+            with open(storage_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {"status": "success", "assets": data}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}

@@ -5,6 +5,7 @@ var bounds;
 var dbIcons;
 var mapEntities = [];
 let selectedEntityId = null;
+let past_positions_limit = 10;
 const DEFAULT_ICON_RULES = [
   {
     ruleType: "percentage",
@@ -31,9 +32,17 @@ const DEFAULT_ICON_RULES = [
 const RELATED_ICON_DEFAULTS = {
   drone: {
     iconType: "Drone",
-    color: "#d35400",
-    size: 22,
-    minZoomVisible: 9
+    color: "#000000",
+    historyColor: "#888888",
+    size: 24,
+    minZoomVisible: 9,
+    historyOpacity: 0.6,
+    lineOptions: {
+      color: "#444444",
+      weight: 3,
+      opacity: 0.8,
+      dashArray: "6, 6"
+    }
   }
 };
 
@@ -78,6 +87,8 @@ async function initializeMap() {
 
   map.on("zoomend", updateBadgesVisibility);
   map.on("zoomend", updateRelatedIconsVisibility);
+
+  await loadSavedMapState();
 
   $("#close-upload-modal").on("click", function () {
     $('#upload-modal').css('display', 'none');
@@ -222,10 +233,12 @@ async function initializeMap() {
         if (!res || res.status !== "success") return;
 
         clearAllMarkersFromMap(map);
+        mapEntities = [];
 
         const assets = res.assets || [];
-        dates = await getDates();
-        assets.forEach(async a => {
+        const dates = await getDates();
+
+        for (const a of assets) {
           const obj = {
             id: generateId(),
             iconType: a.iconType,
@@ -242,19 +255,19 @@ async function initializeMap() {
             marker: undefined,
             name_marker: undefined,
             badge_marker: undefined,
-            a_high: 0,
-            a_medium: 0,
-            a_low: 0,
-            a_info: 0,
+            a_high: 0, a_medium: 0, a_low: 0, a_info: 0,
             rules: createDefaultRules(),
             related_icons: []
           };
 
           mapEntities.push(obj);
           await DrawNewAlert(dates.start_date, dates.end_date, obj);
-          $('#upload-modal').css('display', 'none');
-          $('#modal-mask').css('display', 'none');
-        });
+        }
+
+        saveCurrentMapState();
+
+        $('#upload-modal').css('display', 'none');
+        $('#modal-mask').css('display', 'none');
       }).fail(function (xhr) {
         console.error(xhr.status, xhr.responseText);
         console.error("Upload failed (server error)");
@@ -326,11 +339,10 @@ async function initializeMap() {
       return;
     }
 
-    navigato_to_table(entity.entity_name)
+    navigato_to_table(entity.entity_name, undefined);
   })
 
   bindRulesEditor("#rules-grid-container");
-  // await initMapContent();
 }
 
 function openUploadModal() {
@@ -364,139 +376,67 @@ function getDbIcons() {
   ]
 }
 
-// async function initMapContent() {
-//   mapEntities = [
-//     {
-//       id: 1,
-//       iconType: "Airport",
-//       lat: 44.820797,
-//       lng: -0.709970,
-//       marker: undefined,
-//       marker_size: 32,
-//       name_position: "Left",
-//       name: "BA 106",
-//       name_visible: 7,
-//       name_marker: undefined,
-//       display_position: "Right",
-//       display_visible: 7,
-//       badge_marker: undefined,
-//       a_high: 40, a_medium: 100, a_low: 1234, a_info: 3
-//     },
-//     {
-//       id: 2,
-//       iconType: "Airport",
-//       lat: 48.774279,
-//       lng: 2.191644,
-//       marker: undefined,
-//       marker_size: 24,
-//       name: "BA 107",
-//       name_position: "Right",
-//       name_visible: 5,
-//       name_marker: undefined,
-//       display_position: "Up",
-//       display_visible: 4,
-//       badge_marker: undefined,
-//       a_high: 2, a_medium: 500, a_low: 1, a_info: 52
-//     },
-//     {
-//       id: 3,
-//       iconType: "Airport",
-//       lat: 43.604652,
-//       lng: 1.444209,
-//       marker: undefined,
-//       marker_size: 28,
-//       name: "BA 108",
-//       name_position: "Up",
-//       name_visible: 6,
-//       name_marker: undefined,
-//       display_position: "Left",
-//       display_visible: 6,
-//       badge_marker: undefined,
-//       a_high: 12, a_medium: 80, a_low: 320, a_info: 9
-//     }
-//   ];
+function DrawNewAlert(start_date, end_date, obj) {
+  return new Promise((resolve, reject) => {
+    const body = {
+      entity_name: obj.entity_name,
+      start_date: start_date,
+      end_date: end_date
+    };
 
-//   dates = await getDates();
+    $.ajax({
+      url: `/get_alerts_by_entityname`,
+      type: "POST",
+      data: body,
+      contentType: "application/json",
+      success: function (response) {
+        obj.a_high = 0; obj.a_medium = 0; obj.a_low = 0; obj.a_info = 0;
 
-//   mapEntities.forEach(async icon => {
-//     await DrawNewAlert(dates.start_date, dates.end_date, icon)
-//   })
+        if (response.status === "success" && response.data.length > 0) {
+          obj.a_high = countAlerts(response.data, "High");
+          obj.a_medium = countAlerts(response.data, "Medium");
+          obj.a_low = countAlerts(response.data, "Low");
+          obj.a_info = countAlerts(response.data, "Info");
 
-//   updateBadgesVisibility();
-// }
+          const cache = buildAlertDescriptionCache(response.data);
+          obj.alert_text = cache.alert_text;
+          obj._alertDescLoaded = true;
 
-async function DrawNewAlert(start_date, end_date, obj) {
-  body = {
-    entity_name: obj.entity_name,
-    start_date: start_date,
-    end_date: end_date
-  }
+          syncRelatedIconsFromAlerts(obj, response.data);
+        }
 
-  $.ajax({
-    url: `/get_alerts_by_entityname`,
-    type: "POST",
-    data: body,
-    contentType: "application/json",
-    success: function (response) {
-      if (response.status === "success" && response.data.length > 0) {
-        console.log(response.data);
-        obj.a_high = countAlerts(response.data, "High")
-        obj.a_medium = countAlerts(response.data, "Medium")
-        obj.a_low = countAlerts(response.data, "Low")
-        obj.a_info = countAlerts(response.data, "Info")
-        const cache = buildAlertDescriptionCache(response.data);
-        obj.alert_descriptions = cache.alert_descriptions;
-        obj.alert_text = cache.alert_text;
-        obj._alertDescLoaded = true;
-        syncRelatedIconsFromAlerts(obj, response.data);
-      } else {
-        obj.alert_descriptions = [];
-        obj.alert_text = "";
-        obj._alertDescLoaded = true;
+        const newIcon = assignIcon(obj.iconType, obj.id, obj.marker_size);
+
+        if (obj.marker && map.hasLayer(obj.marker)) {
+          obj.marker.setIcon(newIcon);
+          if (obj.badge_marker) obj.badge_marker.setIcon(buildBadgeIcon(obj));
+        } else {
+          obj.marker = L.marker([obj.lat, obj.lng], { icon: newIcon }).addTo(map);
+
+          if (obj.town) {
+            obj.marker.bindTooltip("Town: " + obj.town, {
+              permanent: false, direction: 'top', offset: [0, -20], className: 'town-tooltip'
+            });
+          }
+
+          obj.marker.on('click', function () {
+            selectedEntityId = obj.id;
+            $("#PopoverOption").attr("data-selected-entity-id", obj.id);
+            show_popover($(this._icon));
+          });
+
+          obj.badge_marker = L.marker([obj.lat, obj.lng], { icon: buildBadgeIcon(obj), interactive: true }).addTo(map);
+          obj.name_marker = L.marker([obj.lat, obj.lng], { icon: buildNameBadge(obj), interactive: false }).addTo(map);
+        }
+
+        updateBadgesVisibility();
+        resolve();
+      },
+      error: function (e) {
+        console.error("Errore DrawNewAlert:", e);
+        reject(e);
       }
-
-      const icon = assignIcon(obj.iconType, obj.id, obj.marker_size);
-      const marker = L.marker([obj.lat, obj.lng], { icon }).addTo(map);
-
-      if (obj.town) {
-        marker.bindTooltip("Town: " + obj.town, {
-          permanent: false,
-          direction: 'top',
-          offset: [0, -20],
-          className: 'town-tooltip'
-        });
-      }
-
-      obj.marker = marker;
-      const badgeIcon = buildBadgeIcon(obj);
-      const nameBadge = buildNameBadge(obj);
-
-      marker.on('contextmenu', function () {
-        const node = $(this._icon);
-
-        selectedEntityId = obj.id;
-        $("#PopoverOption").attr("data-selected-entity-id", obj.id);
-
-        show_popover(node);
-      });
-
-      const badgeMarker = L.marker([obj.lat, obj.lng], {
-        icon: badgeIcon,
-        interactive: false
-      }).addTo(map);
-
-      const nameMarker = L.marker([obj.lat, obj.lng], {
-        icon: nameBadge,
-        interactive: false
-      }).addTo(map);
-
-      obj.badge_marker = badgeMarker;
-      obj.name_marker = nameMarker;
-      updateBadgesVisibility();
-    },
-    error: function (error) {
-      console.log("Error:", error);
-    },
+    });
   });
 }
 
@@ -550,16 +490,22 @@ function buildNameBadge(obj) {
 
 function createBadgeHtml(obj) {
   const posClass = getBadgePosClass(obj.display_position, obj.name_position);
-
   const sizePx = Number(obj.marker_size) || 32;
   const radiusPx = sizePx / 2;
 
+  const currentZoom = map ? map.getZoom() : 0;
+  const isClickable = currentZoom >= obj.display_visible;
+
+  const getOnClick = (type) => {
+    return isClickable ? `onclick="navigato_to_table('${obj.entity_name}', '${type}')"` : "";
+  };
+
   return `
-    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px;">
-      <span class="h">${obj.a_high || 0}</span>
-      <span class="m">${obj.a_medium || 0}</span>
-      <span class="l">${obj.a_low || 0}</span>
-      <span class="i">${obj.a_info || 0}</span>
+    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px; cursor: ${isClickable ? 'pointer' : 'default'};">
+      <span class="h" ${getOnClick('High')}>${obj.a_high || 0}</span>
+      <span class="m" ${getOnClick('Medium')}>${obj.a_medium || 0}</span>
+      <span class="l" ${getOnClick('Low')}>${obj.a_low || 0}</span>
+      <span class="i" ${getOnClick('Info')}>${obj.a_info || 0}</span>
     </div>
   `;
 }
@@ -612,11 +558,24 @@ function getNameBadgePosClass(badge_position, name_position) {
 function updateBadgesVisibility() {
   const z = map.getZoom();
   mapEntities.forEach(obj => {
-    let visibleBadge = z >= obj.display_visible ? 1 : 0;
-    let visibleName = z >= obj.name_visible ? 1 : 0;
-    if (obj.badge_marker) obj.badge_marker.setOpacity(visibleBadge);
-    if (obj.name_marker) obj.name_marker.setOpacity(visibleName);
-  })
+    const visibleBadge = z >= obj.display_visible;
+    const visibleName = z >= obj.name_visible;
+
+    if (obj.badge_marker) {
+      obj.badge_marker.setOpacity(visibleBadge ? 1 : 0);
+      obj.badge_marker.setIcon(buildBadgeIcon(obj));
+      if (obj.badge_marker._icon) {
+        obj.badge_marker._icon.style.pointerEvents = visibleBadge ? "auto" : "none";
+      }
+    }
+
+    if (obj.name_marker) {
+      obj.name_marker.setOpacity(visibleName ? 1 : 0);
+      if (obj.name_marker._icon) {
+        obj.name_marker._icon.style.pointerEvents = "none";
+      }
+    }
+  });
 }
 
 function downloadBase64File(filename, contentType, base64Data) {
@@ -627,7 +586,6 @@ function downloadBase64File(filename, contentType, base64Data) {
 
   const blob = new Blob([bytes], { type: contentType || "application/octet-stream" });
 
-  // Use FileSaver.js for reliable cross-browser downloads with correct filename
   saveAs(blob, filename || "download");
 }
 
@@ -640,20 +598,11 @@ function clearAllMarkersFromMap(map) {
 }
 
 function deleteMarkerFromMap(entity) {
-  if (!entity) {
-    console.warn("No entity provided");
-    return;
-  }
+  if (!entity) return;
 
-  if (entity.marker) {
-    map.removeLayer(entity.marker);
-  }
-  if (entity.badge_marker) {
-    map.removeLayer(entity.badge_marker);
-  }
-  if (entity.name_marker) {
-    map.removeLayer(entity.name_marker);
-  }
+  if (entity.marker) map.removeLayer(entity.marker);
+  if (entity.badge_marker) map.removeLayer(entity.badge_marker);
+  if (entity.name_marker) map.removeLayer(entity.name_marker);
 
   const idx = mapEntities.findIndex(e => e.id === entity.id);
   if (idx >= 0) {
@@ -661,6 +610,7 @@ function deleteMarkerFromMap(entity) {
   }
 
   removeAllRelatedIcons(entity);
+  saveCurrentMapState();
 }
 
 // Functions to render the rules grid
@@ -807,7 +757,10 @@ function bindRulesEditor(containerSelector) {
     if (field === "value") value = Number(value);
 
     rule[field] = value;
+
     refreshEntityIcon(entity);
+
+    saveCurrentMapState();
   });
 
   containerEl.addEventListener("click", (e) => {
@@ -823,8 +776,12 @@ function bindRulesEditor(containerSelector) {
     if (idx < 0) return;
 
     entity.rules.splice(idx, 1);
+
     renderRulesGrid(containerEl, entity);
+
     refreshEntityIcon(entity);
+
+    saveCurrentMapState();
   });
 }
 
@@ -877,7 +834,8 @@ function addRuleToMarker() {
   const containerEl = document.querySelector("#rules-grid-container");
   renderRulesGrid(containerEl, entity);
   refreshEntityIcon(entity);
-  console.log(entity);
+
+  saveCurrentMapState();
 }
 
 // Functions to control the icon's color
@@ -1085,10 +1043,11 @@ function convertToISO(dateStr) {
 }
 // -------
 
-async function navigato_to_table(entityName) {
-  if (entityName) {
+async function navigato_to_table(entityName, alertType) {
+  if (entityName || alertType) {
     const body = {
-      entity_name: entityName
+      entity_name: entityName,
+      alert_type: alertType
     };
 
     await $.ajax({
@@ -1183,12 +1142,13 @@ function getRelatedIconConfig(relType, overrides = {}) {
       return {
         iconType: base.iconType,
         color: base.color,
+        historyColor: base.historyColor,
         size: base.size,
         minZoomVisible: base.minZoomVisible,
+        historyOpacity: base.historyOpacity,
         ...overrides
       };
     }
-
     default:
       console.warn("Unknown related icon type:", relType);
       return null;
@@ -1217,32 +1177,66 @@ function updateRelatedIconsVisibility() {
 
 function syncRelatedIconsFromAlerts(entity, alertRows) {
   if (!entity) return;
-  if (!Array.isArray(entity.related_icons)) entity.related_icons = [];
+  if (!entity._droneLines) entity._droneLines = {};
 
-  const latestDrones = extractLatestDronesFromAlerts(alertRows);
+  const allDronesData = extractLatestDronesFromAlerts(alertRows);
 
-  latestDrones.forEach(d => {
-    upsertRelatedMarkerForEntity(
-      entity,
-      "drone",
-      d.vectorId,
-      d.lat,
-      d.lng,
-      d.timeMs
-    );
+  const currentKeys = new Set(allDronesData.map(d => `${d.vectorId}_${d.timeMs}`));
+
+  entity.related_icons = entity.related_icons.filter(rel => {
+    if (rel.relType === "drone") {
+      if (!currentKeys.has(rel.relKey)) {
+        if (rel.marker) map.removeLayer(rel.marker);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const pathsById = {};
+
+  allDronesData.forEach(d => {
+    upsertRelatedMarkerForEntity(entity, "drone", d.vectorId, d.lat, d.lng, d);
+
+    if (!pathsById[d.vectorId]) pathsById[d.vectorId] = [];
+    pathsById[d.vectorId].push([d.lat, d.lng]);
+  });
+
+  Object.keys(pathsById).forEach(vectorId => {
+    const coordinates = pathsById[vectorId];
+    if (coordinates.length >= 2) {
+      const lineStyle = RELATED_ICON_DEFAULTS.drone.lineOptions;
+      if (!entity._droneLines[vectorId]) {
+        entity._droneLines[vectorId] = L.polyline(coordinates, lineStyle).addTo(map);
+      } else {
+        entity._droneLines[vectorId].setLatLngs(coordinates);
+        entity._droneLines[vectorId].setStyle(lineStyle);
+      }
+    } else if (entity._droneLines[vectorId]) {
+      map.removeLayer(entity._droneLines[vectorId]);
+      delete entity._droneLines[vectorId];
+    }
   });
 
   updateRelatedIconsVisibility();
 }
 
 function removeAllRelatedIcons(entity) {
-  if (!entity || !Array.isArray(entity.related_icons)) return;
+  if (!entity) return;
 
-  entity.related_icons.forEach(rel => {
-    if (rel?.marker) map.removeLayer(rel.marker);
-  });
+  if (Array.isArray(entity.related_icons)) {
+    entity.related_icons.forEach(rel => {
+      if (rel?.marker) map.removeLayer(rel.marker);
+    });
+    entity.related_icons = [];
+  }
 
-  entity.related_icons = [];
+  if (entity._droneLines) {
+    Object.values(entity._droneLines).forEach(line => {
+      map.removeLayer(line);
+    });
+    entity._droneLines = {};
+  }
 }
 
 function hasRelatedAt(entity, relType, lat, lng, eps = 1e-6) {
@@ -1258,53 +1252,76 @@ function assignIconFixedColor(iconType, size, fillColor) {
   const found = dbIcons.find(x => x.class_name === iconType);
   const finalSize = Number(size) || 22;
 
-  const html = found
-    ? found.html.replace(/\$\{fillColor\}/g, fillColor)
-    : `<div style="width:100%;height:100%;border-radius:50%;background:${fillColor};border:1px solid #333"></div>`;
+  if (found) {
+    let processedHtml = found.html
+      .replace(/\$\{fillColor\}/g, fillColor)
+      .replace(/stroke='black'/g, `stroke='${fillColor}'`);
+
+    return L.divIcon({
+      className: `map-icon ${iconType}-fixed`,
+      html: processedHtml,
+      iconSize: [finalSize, finalSize],
+      iconAnchor: [finalSize / 2, finalSize / 2],
+    });
+  }
 
   return L.divIcon({
-    className: `map-icon ${iconType}-fixed`,
-    html,
+    className: "map-icon fallback",
+    html: `<div style="width:100%; height:100%; border-radius:50%; background:${fillColor}; border:1px solid #333"></div>`,
     iconSize: [finalSize, finalSize],
     iconAnchor: [finalSize / 2, finalSize / 2],
   });
 }
 
 function extractLatestDronesFromAlerts(rows) {
-  const latestById = new Map();
+  const dronesGrouped = {};
 
   (rows || []).forEach(r => {
     if (!r || r.length < 8) return;
 
     const startTime = r[4];
-    const vectorId = r[5];
+    const vectorIdRaw = r[5];
     const category = r[6];
     const geo = r[7];
 
-    if (!vectorId) return;
-    if (!categoryHasDrone(category)) return;
+    if (!vectorIdRaw || !categoryHasDrone(category)) return;
 
     const pt = parseGeoPoint(geo);
-    if (!pt) return;
-
     const timeMs = parseTimeMs(startTime);
-    if (timeMs == null) return;
+    if (!pt || timeMs == null) return;
 
-    const key = String(vectorId);
-    const prev = latestById.get(key);
+    const ids = Array.isArray(parseArrayish(vectorIdRaw)) ? parseArrayish(vectorIdRaw) : [vectorIdRaw];
 
-    if (!prev || timeMs > prev.timeMs) {
-      latestById.set(key, {
+    ids.forEach(vid => {
+      const key = String(vid);
+      if (!dronesGrouped[key]) dronesGrouped[key] = [];
+      dronesGrouped[key].push({
         vectorId: key,
         lat: pt.lat,
         lng: pt.lng,
         timeMs,
         start_time: startTime
       });
-    }
+    });
   });
 
-  return Array.from(latestById.values());
+  const allDrones = [];
+  Object.keys(dronesGrouped).forEach(vid => {
+    let history = dronesGrouped[vid].sort((a, b) => a.timeMs - b.timeMs);
+
+    const totalToKeep = past_positions_limit + 1;
+
+    if (history.length > totalToKeep) {
+      history = history.slice(-totalToKeep);
+    }
+
+    history.forEach((data, index) => {
+      data.isLatest = (index === history.length - 1);
+      allDrones.push(data);
+    });
+  });
+
+  return allDrones;
 }
 
 function categoryHasDrone(categoryValue) {
@@ -1397,52 +1414,205 @@ function findRelatedByKey(entity, relType, relKey) {
   ) || null;
 }
 
-function upsertRelatedMarkerForEntity(entity, relType, relKey, lat, lng, timeMs, options = {}) {
+function upsertRelatedMarkerForEntity(entity, relType, vectorId, lat, lng, data, options = {}) {
   if (!entity) return null;
-  if (!Array.isArray(entity.related_icons)) entity.related_icons = [];
 
+  const relKey = `${vectorId}_${data.timeMs}`;
   const cfg = getRelatedIconConfig(relType, options);
   if (!cfg) return null;
 
   const existing = findRelatedByKey(entity, relType, relKey);
 
   if (!existing) {
-    const icon = assignIconFixedColor(cfg.iconType, cfg.size, cfg.color);
+    const isLatest = data.isLatest;
+    const finalColor = isLatest ? cfg.color : (cfg.historyColor || "#888888");
+    const finalOpacity = isLatest ? 1.0 : (cfg.historyOpacity || 0.4);
+
+    const icon = assignIconFixedColor(cfg.iconType, cfg.size, finalColor);
 
     const marker = L.marker([lat, lng], {
       icon,
-      interactive: false
+      interactive: true,
+      opacity: finalOpacity
     }).addTo(map);
 
-    marker.setOpacity(map.getZoom() >= cfg.minZoomVisible ? 1 : 0);
+    let distStr = "N/A";
+    if (map) {
+      const dMeters = map.distance([lat, lng], [entity.lat, entity.lng]);
+      distStr = dMeters >= 1000 ? (dMeters / 1000).toFixed(2) + " km" : Math.round(dMeters) + " m";
+    }
+
+    const tooltipData = {
+      ...data,
+      distance: distStr,
+      lat: lat,
+      lng: lng
+    };
+
+    const tooltipContent = getDroneTooltipContent(tooltipData);
+    marker.bindTooltip(tooltipContent, {
+      direction: 'top',
+      offset: [0, -10],
+      className: 'drone-tooltip'
+    });
 
     const rel = {
       relId: generateId(),
       relType,
-      relKey: String(relKey),
-      lat,
-      lng,
-      timeMs: Number(timeMs) || 0,
+      relKey: relKey,
+      lat, lng,
+      timeMs: data.timeMs,
       marker
     };
 
     entity.related_icons.push(rel);
     return rel;
   }
-
-  const prevTime = Number(existing.timeMs || 0);
-  const newTime = Number(timeMs || 0);
-  if (newTime <= prevTime) {
-    return existing;
-  }
-
-  existing.timeMs = newTime;
-  existing.lat = lat;
-  existing.lng = lng;
-
-  if (existing.marker) {
-    existing.marker.setLatLng([lat, lng]);
-  }
-
   return existing;
+}
+
+function getDroneTooltipContent(data) {
+  if (!data) return "";
+
+  // Simple template, easy to modify
+  return `
+        <div class="drone-tooltip" style="text-align:left;">
+            <b>Drone ID:</b> ${data.vectorId || "Unknown"}<br/>
+            <b>Time:</b> ${data.start_time || "N/A"}<br/>
+            <b>Location:</b> ${data.lat?.toFixed(5)}, ${data.lng?.toFixed(5)}<br/>
+            <b>Distance:</b> ${data.distance || "N/A"}<br/>
+        </div>
+    `;
+}
+
+function setDefaultPosition() {
+  if (map) {
+    const center = map.getCenter();
+    initialCoordinates = [center.lat, center.lng];
+    initialZoom = map.getZoom();
+    console.log("New default position set:", initialCoordinates, initialZoom);
+  }
+}
+
+function resetMapPosition() {
+  if (map) {
+    map.setView(initialCoordinates, initialZoom);
+  }
+}
+
+async function loadSavedMapState() {
+  try {
+    const res = await $.ajax({
+      url: "/macro_map/load_state",
+      method: "GET",
+      dataType: "json"
+    });
+
+    if (res.status !== "success" || !res.assets) return;
+
+    const dates = await getDates();
+
+    clearAllMarkersFromMap(map);
+    mapEntities = [];
+    for (const a of res.assets) {
+      const obj = {
+        ...a,
+        marker: undefined,
+        name_marker: undefined,
+        badge_marker: undefined,
+        related_icons: []
+      };
+
+      mapEntities.push(obj);
+      await DrawNewAlert(dates.start_date, dates.end_date, obj);
+    }
+    console.log("Map successfully reloaded and synchronized.");
+  } catch (err) {
+    console.error("Error loading map state:", err);
+  }
+}
+
+function saveCurrentMapState() {
+  const stateToSave = mapEntities.map(e => {
+    return {
+      id: e.id,
+      iconType: e.iconType,
+      lat: e.lat,
+      lng: e.lng,
+      marker_size: e.marker_size,
+      name: e.name,
+      town: e.town,
+      name_position: e.name_position,
+      name_visible: e.name_visible,
+      display_position: e.display_position,
+      display_visible: e.display_visible,
+      entity_name: e.entity_name,
+      rules: e.rules || [],
+    };
+  });
+
+  $.ajax({
+    url: "/macro_map/save_state",
+    method: "POST",
+    data: { 
+      state_data: JSON.stringify(stateToSave) 
+    }
+  }).done(function (res) {
+    console.log("State successfully saved in persistent JSON");
+  }).fail(function (xhr) {
+    console.error("Error saving state:", xhr.responseText);
+  });
+}
+
+function openSettingsModal() {
+  $("#settings-modal").css('display', 'flex');
+  $('#modal-mask').css('display', 'flex');
+  $("#past-positions-input").val(past_positions_limit);
+}
+
+function closeSettingsModal() {
+  $('#settings-modal').css('display', 'none');
+  $('#modal-mask').css('display', 'none');
+}
+
+async function applyGlobalSettings() {
+  const newVal = parseInt($("#past-positions-input").val());
+
+  if (!isNaN(newVal) && newVal >= 0) {
+    past_positions_limit = newVal;
+    console.log("Limite aggiornato:", past_positions_limit);
+
+    const dates = await getDates();
+
+    for (const entity of mapEntities) {
+      await DrawNewAlert(dates.start_date, dates.end_date, entity);
+    }
+
+    closeSettingsModal();
+  } else {
+    console.warn("Invalid input for past positions limit:");
+  }
+}
+
+function resetMap() {
+  if (!confirm("Are you sure you want to permanently delete all markers and rules? This action cannot be undone.")) {
+    return;
+  }
+
+  $.ajax({
+    url: "/macro_map/reset_state",
+    method: "POST",
+    dataType: "json"
+  }).done(function (res) {
+    if (res.status === "success") {
+      clearAllMarkersFromMap(map);
+      mapEntities = [];
+      closeSettingsModal();
+      console.log("Map state successfully reset on server and client.");
+    } else {
+      alert("Error resetting map: " + res.message);
+    }
+  }).fail(function (xhr) {
+    console.error("Failed to reset map:", xhr.responseText);
+  });
 }
