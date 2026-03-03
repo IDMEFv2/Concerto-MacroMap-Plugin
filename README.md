@@ -5,9 +5,12 @@ This plugin provides a geospatial visualization layer for IDMEFv2 alerts within 
 ## Features
 
 ### 1. Interactive Map Visualization
-- **Entities**: Displays critical infrastructure dependencies (Airports, Buildings, Nuclear Plants) on a Leaflet-based map.
-- **Status Badges**: Each entity displays a badge summarising the count of active alerts by severity (High, Medium, Low, Info).
-- **Tooltips**: Hovering over entities displays the **Town** name.
+- **Entities**: Displays critical infrastructure assets (Airports, Banks, Hospitals, Nuclear Plants, Ports, and more) on a Leaflet-based map.
+- **Status Badges**: Each entity displays a badge summarising the count of active alerts by severity (High, Medium, Low, Info). Badges can be independently positioned (Up, Down, Left, Right) relative to the marker.
+- **Name Labels**: Each entity can display a name label, independently positioned relative to the marker.
+- **Tooltips**: Hovering over entities displays a rich tooltip showing the entity **Name**, **Town**, and a summary of active alert counts by severity.
+- **Flag Badges**: Entities with a `Nationality` code display a country/organisation flag badge overlaid on the marker icon.
+- **Infrastructure Links**: Entities can be connected by visual lines on the map using the `LinksTo` field, representing infrastructure dependencies.
 
 ### 2. Dynamic Alert Visualization
 - **Color Coding**: Entity icons change color (e.g., Green, Yellow, Red) dynamically based on configurable rules.
@@ -27,17 +30,34 @@ Users can define rules directly from the UI to control entity appearance:
 - **Configurable History**: Set the maximum number of past positions to display (default: 10).
 
 ### 5. Data Management & Import
-- **CSV Upload**: Bulk import entity definitions (Name, Coordinates, Type) using a CSV file.
+- **CSV Upload**: Bulk import entity definitions using a CSV file (semicolon-delimited).
 - **Templates**: Download sample CSV and XLSX templates to get started quickly.
-- **Guide**: Built-in guide (Markdown) available for download.
+- **Guide**: Built-in Markdown guide available for download, describing all fields and validation rules.
 - **Server-side Validation**: Comprehensive CSV validation with detailed error messages for each row and field.
-- **Supported Fields**: Name, Town, Latitude, Longitude, Icon, MarkerSize, NamePosition, NameVisibleZoom, BadgePosition, BadgeVisibleZoom, EntityName.
+- **Supported Fields**:
+
+  | Field | Description |
+  |---|---|
+  | `Name` | Display name shown on the map |
+  | `Town` | City/town where the asset is located |
+  | `Latitude` | Geographic latitude (-90 to 90) |
+  | `Longitude` | Geographic longitude (-180 to 180) |
+  | `Icon` | Icon type (see [Icon Types](#12-multiple-icon-types)) |
+  | `MarkerSize` | Marker size in pixels (≥ 0) |
+  | `NamePosition` | Name label position: `Up`, `Down`, `Left`, `Right` |
+  | `NameVisibleZoom` | Minimum zoom level to show the name (3–12) |
+  | `BadgePosition` | Alert badge position: `Up`, `Down`, `Left`, `Right` |
+  | `BadgeVisibleZoom` | Minimum zoom level to show the badge (3–12) |
+  | `EntityName` | Logical identifier used to associate alerts |
+  | `LinksTo` | Comma-separated `EntityName` values to draw infrastructure links to |
+  | `Nationality` | Country/region code for the flag badge (ISO 3166-1 alpha-2 or exceptions such as `eu`, `un`) |
 
 ### 6. Persistent State Management
-- **Auto-save**: The plugin automatically saves the current map state, including all entities, rules, and custom configurations.
-- **Session Recovery**: Map position, zoom level, and all entities are restored when revisiting the page.
+- **Auto-save**: The plugin automatically saves the current map state (entities, rules, global settings, and map position) after every change.
+- **Server-side Recovery**: Map position, zoom level, entities, and rules are fully restored from `/tmp/prewikka_macro_map/map_state.json` when revisiting the page.
+- **Browser-side Last View**: The last visited map position (center + zoom) is also stored in the browser's `localStorage` and used to restore the viewport immediately on load, before the server state is fetched.
 - **Manual Reset**: Clear all data and start fresh using the "Reset Map" option in Global Settings.
-- **File-based Storage**: Map state is persisted in `/tmp/prewikka_macro_map/map_state.json`.
+- **File-based Storage**: Map state is persisted server-side in `/tmp/prewikka_macro_map/map_state.json`.
 
 ### 7. Map Position Controls
 - **Reset Position**: Instantly return to the default map view (Europe-centered).
@@ -50,26 +70,58 @@ Users can define rules directly from the UI to control entity appearance:
 - **Related Icon Visibility**: Drones and other related icons have independent zoom thresholds for optimal visibility.
 
 ### 9. Context Actions
-Right-click or interact with markers to:
-- **Go to Alerts**: Navigate to the standard alert listing filtered for that specific entity.
-- **Edit Rules**: Open the rule editor for that entity.
-- **Delete**: Remove the marker from the map.
+Clicking a marker opens a context menu with the following options:
+- **Search > Go to alerts table**: Navigate to the standard alert listing pre-filtered for that specific entity and alert type.
+- **Marker settings > Edit color rules**: Open the rule editor for that entity.
+- **Actions > Center map on entity**: Pan and zoom the map to centre on the selected entity, and set that position as the new default view.
+- **Actions > Delete marker**: Remove the marker from the map.
 
 ### 10. Global Settings
 Access advanced configuration through the settings modal:
-- **Vector History Tracking**: Configure the maximum number of past drone positions to display.
-- **Data Management**: Permanently delete all markers and rules to reset the map.
+
+**Vector History Tracking**
+- **Enable history tracking**: Toggle drone position trail recording on or off.
+- **Max past positions**: Configure the maximum number of past drone positions to display (default: 10).
+
+**Visual Settings**
+- **Show entity names**: Globally toggle visibility of all entity name labels.
+- **Show alerts display**: Globally toggle visibility of all alert count badges.
+
+**Data Management**
+- **Restore initial map position**: Reset the map view to the original system default (Europe-centred, zoom 5), discarding any saved custom default.
+- **Reset Map**: Permanently delete all markers, rules, and state — cannot be undone.
 
 ### 11. Time-based Filtering
 - **Automatic Synchronization**: Alert queries respect the Prewikka global time range selector.
 - **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and vector positions.
 
 ### 12. Multiple Icon Types
-Supports various infrastructure types with distinct visual representations:
-- **Airport**: Aviation facilities
-- **Building**: Generic infrastructure
-- **Nuclear Plant**: Critical energy facilities
-- **Drone**: Tracked vectors/threats
+Supports the following infrastructure types with distinct SVG icons:
+
+| Icon name | Description |
+|---|---|
+| `Administration` | Administrative/government facilities |
+| `Airport` | Aviation facilities |
+| `Bank` | Financial institutions |
+| `Hospital` | Healthcare facilities |
+| `Industry` | Industrial sites |
+| `Nuclear` | Nuclear energy facilities |
+| `Port` | Maritime port facilities |
+| `Radar` | Radar/surveillance installations |
+| `Telecom` | Telecommunications infrastructure |
+| `Water` | Water treatment/supply facilities |
+| `Drone` | Tracked vectors/threats (used for related icons) |
+
+### 13. Infrastructure Links
+- **Visual connections**: Entities can be linked on the map with lines representing infrastructure dependencies, configured via the `LinksTo` CSV field.
+- **Automatic rendering**: Links are redrawn automatically after every state change.
+- **Multi-target**: A single entity can link to multiple targets using a comma-separated list of `EntityName` values.
+
+### 14. Nationality & Flag Badges
+- **Flag overlay**: Each marker can display a small flag badge (bottom-left corner) using the `Nationality` field.
+- **Standard codes**: Supports ISO 3166-1 alpha-2 country codes (e.g. `fr`, `us`, `de`).
+- **Extended codes**: Also supports organisation and subnational codes present in the flag assets (e.g. `eu`, `un`, `asean`, `arab`, `gb-eng`, `es-ct`).
+- **Graceful fallback**: If the code has no matching flag image, the badge is silently hidden.
 
 ---
 

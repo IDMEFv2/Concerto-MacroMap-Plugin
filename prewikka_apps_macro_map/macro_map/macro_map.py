@@ -53,7 +53,7 @@ class MacroMapDatabase(database.DatabaseHelper):
     REQUIRED_COLUMNS = [
         "Name", "Town", "Latitude", "Longitude", "Icon", "MarkerSize",
         "NamePosition", "NameVisibleZoom", "BadgePosition", "BadgeVisibleZoom",
-        "EntityName"
+        "EntityName", "LinksTo", "Nationality"
     ]
 
     def save_assets_on_db(self, user_id: str, csv_content: str):
@@ -147,6 +147,8 @@ class MacroMapDatabase(database.DatabaseHelper):
             "display_position": (row.get("BadgePosition") or "").strip(),
             "display_visible": self._as_int(row.get("BadgeVisibleZoom")) or 0,
             "entity_name": (row.get("EntityName") or "").strip(),
+            "links_to": (row.get("LinksTo") or "").strip(),
+            "nationality": (row.get("Nationality") or "").strip(),
         }
 
     def _validate_row(self, row: Dict[str, Any]) -> List[str]:
@@ -344,8 +346,8 @@ class macroMapView(view.View):
 
         return {"status": "no_match", "data": []}
 
-    @view.route("/navigato_to_table", methods=["POST"])
-    def navigato_to_table(self):
+    @view.route("/navigate_to_table", methods=["POST"])
+    def navigate_to_table(self):
         entity_name = env.request.parameters.get("entity_name")
         alert_type = env.request.parameters.get("alert_type")
         criteria = Criterion()
@@ -380,7 +382,7 @@ class macroMapView(view.View):
         try:
             if os.path.isfile(storage_path):
                 os.remove(storage_path)
-            return {"status": "success", "message": "Mappa resettata"}
+            return {"status": "success", "message": "Map reset"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
@@ -388,14 +390,14 @@ class macroMapView(view.View):
     def save_state(self):
         state_data = env.request.parameters.get("state_data")
         if not state_data:
-            return {"status": "error", "message": "Dati mancanti"}
+            return {"status": "error", "message": "Missing data"}
 
         storage_path = self._get_storage_path()
         
         try:
             with open(storage_path, "w", encoding="utf-8") as f:
                 f.write(state_data)
-            print(f"DEBUG: Mappa salvata in {storage_path}") 
+            print(f"DEBUG: Map saved to {storage_path}") 
             return {"status": "success", "path": storage_path}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -410,6 +412,13 @@ class macroMapView(view.View):
         try:
             with open(storage_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            
+            # If data is a dict (new format), add status and return it
+            if isinstance(data, dict):
+                data["status"] = "success"
+                return data
+                
+            # If data is a list (old format), return the classic format
             return {"status": "success", "assets": data}
         except Exception as e:
             return {"status": "error", "message": str(e)}

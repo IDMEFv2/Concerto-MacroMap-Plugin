@@ -64,8 +64,20 @@ This structure is identical across all supported file formats.
 - **Description:** Icon type used to represent the asset on the map
 - **Type:** Text
 - **Rules:**
-  - Currently not validated
-  - Must match the name of an existing icon type
+  - Currently not validated against the list at import time
+  - Must match one of the available icon types (case-sensitive)
+- **Available values:**
+  - `Administration`
+  - `Airport`
+  - `Bank`
+  - `Hospital`
+  - `Industry`
+  - `Nuclear`
+  - `Port`
+  - `Radar`
+  - `Telecom`
+  - `Water`
+  - `Drone`
 
 ---
 
@@ -128,6 +140,37 @@ This structure is identical across all supported file formats.
 
 ---
 
+### LinksTo
+- **Description:** Comma-separated list of `EntityName` values that this asset is visually connected to on the map (infrastructure links drawn as lines)
+- **Type:** Text (optional)
+- **Rules:**
+  - Not validated at import time
+  - Can be empty (leave the field blank or use `""`)
+  - Each value must correspond to the `EntityName` of another asset present on the map; unresolved names are silently ignored
+- **Example:** `Entity A,Entity B`
+
+---
+
+### Nationality
+- **Description:** Country or region code used to display a flag badge on the marker icon
+- **Type:** Text (optional)
+- **Rules:**
+  - Not validated at import time
+  - Can be empty (leave the field blank)
+  - Should follow the ISO 3166-1 alpha-2 standard (e.g. `fr`, `us`, `de`, `it`), but exceptions are allowed for special regions, organizations, or subnational flags if present in the system
+  - If the code does not correspond to an available flag image, the badge is automatically hidden
+- **Notable exceptions:**
+  - `eu` (European Union)
+  - `asean` (ASEAN)
+  - `arab` (Arab League)
+  - `un` (United Nations)
+  - `gb-eng`, `gb-sct`, `gb-wls`, `gb-nir` (UK subnational flags)
+  - `es-ct`, `es-ga`, `es-pv` (Spanish regions)
+  - Other codes as present in the `assets/Flags` directory
+- **Example:** `fr`, `eu`, `un`, `gb-eng`
+
+---
+
 ## Zoom Levels Explained
 
 Zoom levels define **when** labels and badges appear on the map.
@@ -146,19 +189,21 @@ Zoom levels define **when** labels and badges appear on the map.
 
 ## Valid Values Summary
 
-| Field             | Type     | Valid Values / Rules                    |
-|-------------------|----------|------------------------------------------|
-| Name              | Text     | Non-empty                                |
-| Town              | Text     | Non-empty                                |
-| Latitude          | Number   | -90 to 90                                |
-| Longitude         | Number   | -180 to 180                              |
-| Icon              | Text     | Existing icon name                       |
-| MarkerSize        | Integer  | ≥ 0                                      |
-| NamePosition      | Enum     | Up, Down, Left, Right                   |
-| NameVisibleZoom   | Integer  | 3 to 12                                  |
-| BadgePosition     | Enum     | Up, Down, Left, Right                   |
-| BadgeVisibleZoom  | Integer  | 3 to 12                                  |
-| EntityName        | Text     | Non-empty, valid alert entity identifier |
+| Field             | Type     | Valid Values / Rules                             |
+|-------------------|----------|--------------------------------------------------|
+| Name              | Text     | Non-empty                                        |
+| Town              | Text     | Non-empty                                        |
+| Latitude          | Number   | -90 to 90                                        |
+| Longitude         | Number   | -180 to 180                                      |
+| Icon              | Text     | Administration, Airport, Bank, Hospital, Industry, Nuclear, Port, Radar, Telecom, Water, Drone |
+| MarkerSize        | Integer  | ≥ 0                                              |
+| NamePosition      | Enum     | Up, Down, Left, Right                            |
+| NameVisibleZoom   | Integer  | 3 to 12                                          |
+| BadgePosition     | Enum     | Up, Down, Left, Right                            |
+| BadgeVisibleZoom  | Integer  | 3 to 12                                          |
+| EntityName        | Text     | Non-empty, valid alert entity identifier         |
+| LinksTo           | Text     | Comma-separated list of EntityName values, can be an empty string |
+| Nationality       | Text     | ISO 3166-1 alpha-2 country code (e.g. `fr`)      |
 
 ---
 
@@ -169,5 +214,7 @@ Zoom levels define **when** labels and badges appear on the map.
 - Latitude or Longitude outside the valid range
 - Invalid enum values (e.g. `UP` instead of `Up`)
 - Non-integer zoom values
+- `LinksTo` referencing an `EntityName` not present on the map (silently ignored at runtime, but the link will not be drawn)
+- `Nationality` using an invalid or unsupported country code (the flag badge will be hidden automatically)
 
 If any validation error is detected, the import is rejected.
