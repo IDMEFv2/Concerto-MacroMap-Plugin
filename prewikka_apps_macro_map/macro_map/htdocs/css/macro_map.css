@@ -50,6 +50,8 @@
   right: 10px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .controls-button {
@@ -58,6 +60,7 @@
   border: 2px solid rgba(0, 0, 0, 0.2);
   cursor: pointer;
   font-size: 16px;
+  max-width: fit-content;
 }
 
 .controls-button:hover {
@@ -460,4 +463,48 @@ input:checked + .slider:before {
 .btn-settings {
   min-width: 150px;
   text-align: center;
+}
+
+.upload-type-hr {
+  border: none;
+  border-top: 3px double #333333;
+  color: #333333;
+  overflow: visible;
+  text-align: center;
+  height: 5px;
+}
+
+.upload-type-hr::after {
+  background: white;
+  content: "Customized Upload";
+  padding: 0 4px;
+  position: relative;
+  top: -13px;
+}
+
+.version {
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 0.5rem;
+  background-color: #000;
+  border-radius: 25px;
+  margin-bottom: 0.5rem;
+  color: #fff;
+  z-index: 4;
+}
+
+@media screen and (max-width: 1400px) {
+  .crud-modal { width: 50%; }
+}
+
+@media screen and (max-width: 1200px) {
+  .crud-modal { width: 60%; }
+}
+
+@media screen and (max-width: 992px) {
+  .crud-modal { width: 75%; }
+}
+
+@media screen and (max-width: 576px) {
+  .crud-modal { width: 95%; }
 }

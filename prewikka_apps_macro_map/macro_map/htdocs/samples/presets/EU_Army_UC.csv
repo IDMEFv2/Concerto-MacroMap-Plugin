@@ -1,0 +1,47 @@
+Name;Town;Latitude;Longitude;Icon;MarkerSize;NamePosition;NameVisibleZoom;BadgePosition;BadgeVisibleZoom;EntityName;LinksTo;Nationality
+BA 106; Bordeaux-Mérignac;44.820797;-0.709970;Airport;32;Up;7;Right;7;BA 106;"";fr
+BA 107; Villacoublay;48.774279;2.191644;Airport;32;Up;7;Right;7;BA 107;"";fr
+BA 118; Mont-de-Marsan;43.911559;-0.509233;Airport;32;Up;7;Right;7;BA 118;"";fr
+BA 120; Cazaux;44.535;-1.131;Airport;32;Up;7;Right;7;BA 120;"";fr
+BA 113; Saint-Dizier-Robinson;48.633845;4.908013;Airport;32;Up;7;Right;7;BA 113;"";fr
+BA 133; Nancy-Ochey;48.584;5.9551;Airport;32;Up;7;Right;7;BA 133;"";fr
+BA 125; Istres – Le Tubé;43.523;4.924;Airport;32;Up;7;Right;7;BA 125;"";fr
+BA 702; Avord;47.053;2.632;Airport;32;Up;7;Right;7;BA 702;"";fr
+BA 115; Orange-Caritat;44.14831;4.859734;Airport;32;Up;7;Right;7;BA 115;"";fr
+BA 126; Solenzara;41.924;9.406;Airport;32;Up;7;Right;7;BA 126;"";fr
+BA 103; Cambrai-Épinoy;50.219561;3.152733;Airport;32;Up;7;Right;7;BA 103;"";fr
+BA 124; Strasbourg-Entzheim;48.542239;7.634039;Airport;32;Up;7;Right;7;BA 124;"";fr
+BA 136; Toul-Rosières;48.782365;5.981463;Airport;32;Up;7;Right;7;BA 136;"";fr
+BA 279; Châteaudun;48.058;1.377;Airport;32;Up;7;Right;7;BA 279;"";fr
+BA 101; Toulouse-Francazal;43.56;1.45;Airport;32;Up;7;Right;7;BA 101;"";fr
+BA 102; Dijon-Longvic;47.25;5.05;Airport;32;Up;7;Right;7;BA 102;"";fr
+BA 112; Reims-Champagne;49.310278;4.05;Airport;32;Up;7;Right;7;BA 112;"";fr
+BA 721; Rochefort-Saint-Agnant;45.897;-0.983;Airport;32;Up;7;Right;7;BA 721;"";fr
+BA 701; Salon-de-Provence;43.606;5.105;Airport;32;Up;7;Right;7;BA 701;"";fr
+BA 123; Orléans-Bricy;47.98;1.760;Airport;32;Up;7;Right;7;BA 123;"";fr
+BA 110; Creil;49.33;2.520;Airport;32;Up;7;Right;7;BA 110;"";fr
+BA 365; Tahiti-Faaa;-17.56;-149.606;Airport;32;Up;7;Right;7;BA 365;"";fr
+BA 270; Saint-Denis-Gillot;-20.89;55.511;Airport;32;Up;7;Right;7;BA 270;"";fr
+BA 160; Pointe-à-Pitre Le Raizet;16.272;-61.526;Airport;32;Up;7;Right;7;BA 160;"";fr
+BA 190; Cayenne Rochambeau;4.819;-52.361;Airport;32;Up;7;Right;7;BA 190;"";fr
+Büchel ;Büchel;50.1764;7.0578;Airport;32;Up;7;Right;7;Büchel;"";de
+Wunstorf ;Wunstorf;52.45497;9.43021;Airport;32;Up;7;Right;7;Wunstorf;"";de
+Faßberg ;Faßberg;52.9071;10.1838;Airport;32;Up;7;Right;7;Faßberg;"";de
+Holzdorf ;Holzdorf / Schönewalde;51.7679;13.1676;Airport;32;Up;7;Right;7;Holzdorf;"";de
+Lechfeld ;Lagerlechfeld;48.185;10.857;Airport;32;Up;7;Right;7;Lechfeld;"";de
+Fritzlar ;Fritzlar;51.11667;9.28814;Airport;32;Up;7;Right;7;Fritzlar;"";de
+Laupheim ;Laupheim;48.246;9.873;Airport;32;Up;7;Right;7;Laupheim;"";de
+Diepholz ;Diepholz;52.6;8.533;Airport;32;Up;7;Right;7;Diepholz;"";de
+Ramstein ;Ramstein-Miesenbach;49.4368;7.6003;Airport;32;Up;7;Right;7;Ramstein;"";us
+Amendola ;Foggia;41.541;15.718;Airport;32;Up;7;Right;7;Amendola;"";it
+Aviano ;Aviano;46.032;12.596;Airport;32;Up;7;Right;7;Aviano;"";us
+Ghedi ;Ghedi (près de Brescia);45.4322;10.2678;Airport;32;Up;7;Right;7;Ghedi;"";it
+Gioia del Colle ;Gioia del Colle;40.768;16.933;Airport;32;Up;7;Right;7;Gioia del Colle;"";it
+Grosseto ;Grosseto;42.76;11.072;Airport;32;Up;7;Right;7;Grosseto;"";it
+Grazzanise ;Grazzanise (Caserta);41.06;14.082;Airport;32;Up;7;Right;7;Grazzanise;"";it
+Rivolto ;Codroipo (Udine);45.981;13.051;Airport;32;Up;7;Right;7;Rivolto;"";it
+Sigonella ;Sicile (près de Catane);37.401667;14.922222;Airport;32;Up;7;Right;7;Sigonella;"";it
+Latina ;Latina;41.542;12.909;Airport;32;Up;7;Right;7;Latina;"";it
+Pisa ;Pisa;43.684;10.393;Airport;32;Up;7;Right;7;Pisa;"";it
+Catania;Sicile;37.402;14.922;Airport;32;Up;7;Right;7;Catania;"";it
+Lecce ;Galatina (près de Lecce);40.239;18.133;Airport;32;Up;7;Right;7;Lecce;"";it

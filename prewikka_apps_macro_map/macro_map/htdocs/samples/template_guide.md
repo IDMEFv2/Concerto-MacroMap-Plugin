@@ -166,7 +166,7 @@ This structure is identical across all supported file formats.
   - `un` (United Nations)
   - `gb-eng`, `gb-sct`, `gb-wls`, `gb-nir` (UK subnational flags)
   - `es-ct`, `es-ga`, `es-pv` (Spanish regions)
-  - Other codes as present in the `assets/Flags` directory
+  - Other codes as present in the `assets/flags` directory
 - **Example:** `fr`, `eu`, `un`, `gb-eng`
 
 ---

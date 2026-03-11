@@ -10,7 +10,11 @@ let past_positions_limit = 10;
 let allBadgesVisible = true;
 let allNamesVisible = true;
 let showHistory = true;
-const FLAG_PATH = "macro_map/assets/Flags/";
+let globalSizeEnabled = false;
+let globalEntitySize = 32;
+let selectedCsvFile = null;
+let selectedCsvText = null;
+const FLAG_PATH = "macro_map/assets/flags/";
 const FLAG_STYLE = {
   border: "0.5px solid #333",
   background: "white",
@@ -94,6 +98,9 @@ async function initializeMap() {
 
   await loadSavedMapState();
 
+  initializeDraggableModals();
+  await initializePresetButtons();
+
   $("#close-upload-modal").on("click", function () {
     $('#upload-modal').css('display', 'none');
     $('#modal-mask').css('display', 'none');
@@ -125,6 +132,15 @@ async function initializeMap() {
       const entity = mapEntities.find(e => e.id === selectedEntityId);
       if (entity) {
         centerMapOnEntity(entity);
+      }
+    }
+  });
+
+  $("#center_and_zoom_map_on_entity").on("click", function () {
+    if (selectedEntityId !== null) {
+      const entity = mapEntities.find(e => e.id === selectedEntityId);
+      if (entity) {
+        centerAndZoomMapOnEntity(entity);
       }
     }
   });
@@ -204,6 +220,11 @@ async function initializeMap() {
     $("#submit-csv-button").prop("disabled", true);
   });
 
+  $("#submit-csv-button").prop("disabled", true);
+  $("#submit-csv-button").off("click").on("click", async function () {
+    await submitCsvContentToMap(selectedCsvText);
+  });
+
   $("#csv-file-input").off("change").on("change", function (event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -230,84 +251,6 @@ async function initializeMap() {
       $("#csv-filename").val("");
       $("#submit-csv-button").prop("disabled", true);
     };
-
-    $("#submit-csv-button").off("click").on("click", function () {
-      if (!selectedCsvText) {
-        console.error("No CSV loaded");
-        return;
-      }
-
-      $.ajax({
-        url: "/macro_map/upload_csv",
-        method: "POST",
-        dataType: "json",
-        data: { csv_content: selectedCsvText }
-      }).done(async function (res) {
-        if (!res || res.status !== "success") return;
-
-        clearAllMarkersFromMap(map);
-        mapEntities = [];
-        const assets = res.assets || [];
-        const dates = await getDates();
-
-        const promises = assets.map(a => {
-          const obj = {
-            id: generateId(),
-            iconType: a.iconType,
-            lat: a.lat,
-            lng: a.lng,
-            marker_size: a.marker_size,
-            name: a.name,
-            town: a.town,
-            name_position: a.name_position,
-            name_visible: a.name_visible,
-            display_position: a.display_position,
-            display_visible: a.display_visible,
-            entity_name: a.entity_name,
-            links_to: a.links_to || "",
-            nationality: a.nationality || "",
-            marker: undefined,
-            name_marker: undefined,
-            badge_marker: undefined,
-            a_high: 0, a_medium: 0, a_low: 0, a_info: 0,
-            rules: createDefaultRules(),
-            related_icons: []
-          };
-          mapEntities.push(obj);
-          return DrawNewAlert(dates.start_date, dates.end_date, obj, false);
-        });
-
-        await Promise.all(promises);
-        mapEntities.forEach(obj => {
-          obj.marker.addTo(map);
-          obj.badge_marker.addTo(map);
-          obj.name_marker.addTo(map);
-        });
-
-        drawInfrastructureLinks();
-        saveCurrentMapState();
-        updateBadgesVisibility();
-
-        if (mapEntities.length > 0) {
-          const points = mapEntities.map(e => [e.lat, e.lng]);
-
-          const bounds = L.latLngBounds(points);
-
-          map.fitBounds(bounds, { padding: [50, 50] });
-
-          initialCoordinates = [map.getCenter().lat, map.getCenter().lng];
-          initialZoom = map.getZoom();
-
-          saveCurrentMapState();
-        }
-
-        $('#upload-modal').css('display', 'none');
-        $('#modal-mask').css('display', 'none');
-      }).fail(function (xhr) {
-        console.error(xhr.status, xhr.responseText);
-        console.error("Upload failed (server error)");
-      });
-    });
 
     reader.readAsText(file);
   });
@@ -343,6 +286,9 @@ async function initializeMap() {
   $("#delete_marker").off("click").on("click", function (e) {
     e.preventDefault();
     e.stopPropagation();
+    if (!confirm("Are you sure you want to permanently delete this entity? This action cannot be undone.")) {
+      return;
+    }
 
     const id = selectedEntityId ?? Number($("#PopoverOption").attr("data-selected-entity-id"));
     if (id == null) {
@@ -381,11 +327,17 @@ async function initializeMap() {
     $("#past-positions-input").prop("disabled", !$(this).is(":checked"));
   });
 
+  $(document).on("change", "#enable-global-size", function () {
+    $("#global-entity-size-input").prop("disabled", !$(this).is(":checked"));
+  });
+
   bindRulesEditor("#rules-grid-container");
 }
 
 function openUploadModal() {
+  initializeDraggableModals();
   $("#upload-modal").css('display', 'flex');
+  centerModal($("#upload-modal"));
   $('#modal-mask').css('display', 'flex');
 }
 
@@ -442,76 +394,80 @@ function getDbIcons() {
   ]
 }
 
-function DrawNewAlert(start_date, end_date, obj, addToMapNow = true) {
-  return new Promise((resolve, reject) => {
-    const body = {
-      entity_name: obj.entity_name,
-      start_date: start_date,
-      end_date: end_date
-    };
+function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
+  if (Array.isArray(alerts)) {
+    obj.a_high = 0; obj.a_medium = 0; obj.a_low = 0; obj.a_info = 0;
 
-    $.ajax({
-      url: `/get_alerts_by_entityname`,
-      type: "POST",
-      data: body,
-      contentType: "application/json",
-      success: function (response) {
-        obj.a_high = 0; obj.a_medium = 0; obj.a_low = 0; obj.a_info = 0;
+    if (alerts.length > 0) {
+      obj.a_high = countAlerts(alerts, "High");
+      obj.a_medium = countAlerts(alerts, "Medium");
+      obj.a_low = countAlerts(alerts, "Low");
+      obj.a_info = countAlerts(alerts, "Info");
 
-        if (response.status === "success" && response.data.length > 0) {
-          obj.a_high = countAlerts(response.data, "High");
-          obj.a_medium = countAlerts(response.data, "Medium");
-          obj.a_low = countAlerts(response.data, "Low");
-          obj.a_info = countAlerts(response.data, "Info");
+      const cache = buildAlertDescriptionCache(alerts);
+      obj.alert_text = cache.alert_text;
+      obj._alertDescLoaded = true;
+    } else {
+      obj.alert_text = "";
+      obj._alertDescLoaded = true;
+    }
 
-          const cache = buildAlertDescriptionCache(response.data);
-          obj.alert_text = cache.alert_text;
-          obj._alertDescLoaded = true;
+    syncRelatedIconsFromAlerts(obj, alerts, addToMapNow);
+  }
 
-          syncRelatedIconsFromAlerts(obj, response.data, addToMapNow);
-        }
+  const newIcon = assignIcon(obj.iconType, obj.id, obj.marker_size, obj.nationality);
 
-        const newIcon = assignIcon(obj.iconType, obj.id, obj.marker_size, obj.nationality);
+  if (obj.marker) {
+    obj.marker.setIcon(newIcon);
+    if (obj.badge_marker) obj.badge_marker.setIcon(buildBadgeIcon(obj));
 
-        if (obj.marker) {
-          obj.marker.setIcon(newIcon);
-          if (obj.badge_marker) obj.badge_marker.setIcon(buildBadgeIcon(obj));
+    const updatedContent = createEntityTooltipHtml(obj);
+    obj.marker.setTooltipContent(updatedContent);
+  } else {
+    obj.marker = L.marker([obj.lat, obj.lng], { icon: newIcon });
+    obj.badge_marker = L.marker([obj.lat, obj.lng], { icon: buildBadgeIcon(obj), interactive: true });
+    obj.name_marker = L.marker([obj.lat, obj.lng], { icon: buildNameBadge(obj), interactive: false });
 
-          // Update tooltip content if the marker already exists
-          const updatedContent = createEntityTooltipHtml(obj);
-          obj.marker.setTooltipContent(updatedContent);
-        } else {
-          obj.marker = L.marker([obj.lat, obj.lng], { icon: newIcon });
-          obj.badge_marker = L.marker([obj.lat, obj.lng], { icon: buildBadgeIcon(obj), interactive: true });
-          obj.name_marker = L.marker([obj.lat, obj.lng], { icon: buildNameBadge(obj), interactive: false });
+    if (addToMapNow) {
+      obj.marker.addTo(map);
+      obj.badge_marker.addTo(map);
+      obj.name_marker.addTo(map);
+    }
 
-          if (addToMapNow) {
-            obj.marker.addTo(map);
-            obj.badge_marker.addTo(map);
-            obj.name_marker.addTo(map);
-          }
-
-          // Create the rich tooltip
-          const tooltipHtml = createEntityTooltipHtml(obj);
-          obj.marker.bindTooltip(tooltipHtml, {
-            permanent: false,
-            direction: 'top',
-            offset: [0, -10],
-            className: 'entity-rich-tooltip'
-          });
-
-          obj.marker.on('click', function () {
-            selectedEntityId = obj.id;
-            $("#PopoverOption").attr("data-selected-entity-id", obj.id);
-            show_popover($(this._icon));
-          });
-        }
-        resolve();
-      },
-      error: function (e) {
-        reject(e);
-      }
+    const tooltipHtml = createEntityTooltipHtml(obj);
+    obj.marker.bindTooltip(tooltipHtml, {
+      permanent: false,
+      direction: 'top',
+      offset: [0, -10],
+      className: 'entity-rich-tooltip'
     });
+
+    obj.marker.on('click', function () {
+      selectedEntityId = obj.id;
+      $("#PopoverOption").attr("data-selected-entity-id", obj.id);
+      show_popover($(this._icon));
+    });
+  }
+}
+
+async function fetchAllAlertsBulk(dates) {
+  const entityNames = mapEntities
+    .map(e => normalizeEntityKey(e.entity_name))
+    .filter(Boolean);
+
+  if (!entityNames.length) {
+    return { status: "success", data: {} };
+  }
+
+  return $.ajax({
+    url: "/macro_map/get_all_alerts_bulk",
+    type: "POST",
+    dataType: "json",
+    data: {
+      entities: JSON.stringify(entityNames),
+      start_date: dates.start_date,
+      end_date: dates.end_date
+    }
   });
 }
 
@@ -523,6 +479,10 @@ function createEntityTooltipHtml(obj) {
       ${getAlertsHtmlForTooltip(obj)}
     </div>
   `;
+}
+
+function normalizeEntityKey(value) {
+  return (value ?? "").toString().trim();
 }
 
 function assignIcon(iconType, id, size, flagCode = null) {
@@ -691,6 +651,175 @@ function downloadBase64File(filename, contentType, base64Data) {
   saveAs(blob, filename || "download");
 }
 
+async function initializePresetButtons() {
+  const container = $("#presets-div");
+  if (!container.length) return;
+
+  container.empty();
+
+  try {
+    const res = await $.ajax({
+      url: "/macro_map/list_presets",
+      method: "GET",
+      dataType: "json"
+    });
+
+    const presets = Array.isArray(res?.presets) ? res.presets : [];
+
+    if (presets.length === 0) {
+      container.append($("<span>", { text: "No presets available" }));
+      return;
+    }
+
+    presets.forEach(preset => {
+      const filename = (preset?.filename || "").toString();
+      if (!filename) return;
+
+      const displayName = (preset?.display_name || filename).toString();
+      const button = $("<button>", {
+        type: "button",
+        class: "btn btn-primary",
+        text: displayName
+      });
+
+      button.on("click", async function () {
+        await loadPresetAndSubmit(filename);
+      });
+
+      container.append(button);
+    });
+  } catch (xhr) {
+    console.error(xhr?.status, xhr?.responseText);
+    console.error("Failed to load presets");
+    container.append($("<span>", { text: "Failed to load presets" }));
+  }
+}
+
+async function loadPresetAndSubmit(filename) {
+  if (!filename) return;
+
+  try {
+    const res = await $.ajax({
+      url: "/macro_map/load_preset",
+      method: "POST",
+      dataType: "json",
+      data: { filename: filename }
+    });
+
+    if (!res || res.status !== "success") {
+      console.error("Failed to load preset");
+      return;
+    }
+
+    selectedCsvFile = null;
+    selectedCsvText = (res.csv_content || "").toString();
+    $("#csv-filename").val(res.filename || filename);
+    $("#submit-csv-button").prop("disabled", !selectedCsvText);
+
+    await submitCsvContentToMap(selectedCsvText);
+  } catch (xhr) {
+    console.error(xhr?.status, xhr?.responseText);
+    console.error("Failed to load preset");
+  }
+}
+
+async function submitCsvContentToMap(csvText) {
+  if (!csvText) {
+    console.error("No CSV loaded");
+    return;
+  }
+
+  try {
+    const res = await $.ajax({
+      url: "/macro_map/upload_csv",
+      method: "POST",
+      dataType: "json",
+      data: { csv_content: csvText }
+    });
+
+    if (!res || res.status !== "success") {
+      console.error("Upload failed");
+      return;
+    }
+
+    await renderUploadedAssetsOnMap(res.assets || []);
+
+    $('#upload-modal').css('display', 'none');
+    $('#modal-mask').css('display', 'none');
+  } catch (xhr) {
+    console.error(xhr?.status, xhr?.responseText);
+    console.error("Upload failed (server error)");
+  }
+}
+
+async function renderUploadedAssetsOnMap(assets) {
+  clearAllMarkersFromMap(map);
+  mapEntities = [];
+
+  const dates = await getDates();
+  if (!dates) return;
+
+  (assets || []).forEach(a => {
+    const obj = {
+      id: generateId(),
+      iconType: a.iconType,
+      lat: a.lat,
+      lng: a.lng,
+      marker_size: globalSizeEnabled ? globalEntitySize : (a.marker_size || 32),
+      name: a.name,
+      town: a.town,
+      name_position: a.name_position,
+      name_visible: a.name_visible,
+      display_position: a.display_position,
+      display_visible: a.display_visible,
+      entity_name: a.entity_name,
+      links_to: a.links_to || "",
+      nationality: a.nationality || "",
+      marker: undefined,
+      name_marker: undefined,
+      badge_marker: undefined,
+      a_high: 0, a_medium: 0, a_low: 0, a_info: 0,
+      rules: createDefaultRules(),
+      related_icons: []
+    };
+    mapEntities.push(obj);
+  });
+
+  if (mapEntities.length > 0) {
+    try {
+      const response = await fetchAllAlertsBulk(dates);
+      if (response && response.status === "success") {
+        const allAlerts = response.data;
+
+        mapEntities.forEach(obj => {
+          const entityKey = normalizeEntityKey(obj.entity_name);
+          const entityAlerts = allAlerts[entityKey] || allAlerts[obj.entity_name] || [];
+          updateEntityDataAndGraphics(obj, entityAlerts, true);
+        });
+      }
+    } catch (e) {
+      console.error("Bulk load during upload failed", e);
+      mapEntities.forEach(obj => updateEntityDataAndGraphics(obj, [], true));
+    }
+  }
+
+  drawInfrastructureLinks();
+  updateBadgesVisibility();
+  updateRelatedIconsVisibility();
+
+  if (mapEntities.length > 0) {
+    const points = mapEntities.map(e => [e.lat, e.lng]);
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, { padding: [50, 50] });
+
+    defaultView = {
+      center: [map.getCenter().lat, map.getCenter().lng],
+      zoom: map.getZoom()
+    };
+    saveCurrentMapState();
+  }
+}
+
 function clearAllMarkersFromMap(map) {
   map.eachLayer(function (layer) {
     if (layer instanceof L.Marker) {
@@ -713,7 +842,9 @@ function deleteMarkerFromMap(entity) {
 
 // Functions to render the rules grid
 function openRulesModal(entity) {
+  initializeDraggableModals();
   $("#rules-modal").css("display", "flex");
+  centerModal($("#rules-modal"));
   $("#modal-mask").css("display", "flex");
 
   $("#rules-modal-title").text(`Rules for: ${entity.entity_name || entity.name || entity.id}`);
@@ -1634,12 +1765,13 @@ function resetMapPosition() {
 
 function centerMapOnEntity(entity) {
   if (map && entity) {
-    map.once('moveend', function () {
-      setDefaultPosition();
-      saveCurrentMapState();
-    });
-
     map.setView([entity.lat, entity.lng], map.getZoom());
+  }
+}
+
+function centerAndZoomMapOnEntity(entity) {
+  if (map && entity) {
+    map.setView([entity.lat, entity.lng], (map.getMaxZoom() - 2));
   }
 }
 
@@ -1657,6 +1789,9 @@ async function loadSavedMapState() {
       allNamesVisible = res.global_settings.names_visible ?? true;
       allBadgesVisible = res.global_settings.badges_visible ?? true;
       showHistory = res.global_settings.show_history ?? true;
+      globalSizeEnabled = res.global_settings.global_size_enabled ?? res.global_settings.global_size ?? false;
+      const savedGlobalSize = Number(res.global_settings.global_size_value ?? globalEntitySize);
+      globalEntitySize = Number.isFinite(savedGlobalSize) && savedGlobalSize >= 1 ? savedGlobalSize : 32;
       past_positions_limit = res.global_settings.history_limit ?? 10;
     }
 
@@ -1682,7 +1817,7 @@ async function loadSavedMapState() {
     clearAllMarkersFromMap(map);
     mapEntities = [];
 
-    const promises = rawAssets.map(a => {
+    rawAssets.forEach(a => {
       const obj = {
         ...a,
         marker: undefined,
@@ -1692,35 +1827,39 @@ async function loadSavedMapState() {
         links_to: a.links_to || "",
         nationality: a.nationality || ""
       };
+
+      if (globalSizeEnabled) {
+        obj.marker_size = globalEntitySize;
+      }
+
       mapEntities.push(obj);
-      // Return the DrawNewAlert promise
-      return DrawNewAlert(dates.start_date, dates.end_date, obj, false); // Note the 'false' flag
     });
 
-    // 2. Wait until ALL data has been fetched
-    await Promise.all(promises);
+    if (mapEntities.length > 0 && dates) {
+      try {
+        const bulkRes = await fetchAllAlertsBulk(dates);
+        console.log(bulkRes);
 
-    // 3. Now that all data is ready in memory, add it to the map
-    mapEntities.forEach(obj => {
-      if (obj.marker) obj.marker.addTo(map);
-      if (obj.badge_marker) obj.badge_marker.addTo(map);
-      if (obj.name_marker) obj.name_marker.addTo(map);
-      // Also add related icons (drones and lines) when present
-      if (obj.related_icons) {
-        obj.related_icons.forEach(rel => {
-          if (rel.marker) rel.marker.addTo(map);
-        });
+        if (bulkRes && bulkRes.status === "success") {
+          const allAlerts = bulkRes.data;
+
+          mapEntities.forEach(obj => {
+            const entityKey = normalizeEntityKey(obj.entity_name);
+            const entityAlerts = allAlerts[entityKey] || allAlerts[obj.entity_name] || [];
+            updateEntityDataAndGraphics(obj, entityAlerts, true);
+          });
+        }
+      } catch (bulkErr) {
+        console.error("Bulk alerts load failed:", bulkErr);
+        mapEntities.forEach(obj => updateEntityDataAndGraphics(obj, [], true));
       }
-      if (obj._droneLines) {
-        Object.values(obj._droneLines).forEach(line => line.addTo(map));
-      }
-    });
+    }
 
     drawInfrastructureLinks();
     updateBadgesVisibility();
     updateRelatedIconsVisibility();
 
-    console.log("Map loaded instantly: " + mapEntities.length + " assets ready.");
+    console.log("Map loaded instantly via Bulk API: " + mapEntities.length + " assets ready.");
   } catch (err) {
     console.error("Error loading state:", err);
   }
@@ -1749,6 +1888,9 @@ function saveCurrentMapState() {
       names_visible: allNamesVisible,
       badges_visible: allBadgesVisible,
       show_history: showHistory,
+      global_size: globalSizeEnabled,
+      global_size_enabled: globalSizeEnabled,
+      global_size_value: globalEntitySize,
       history_limit: past_positions_limit
     },
     assets: assetsToSave
@@ -1761,14 +1903,71 @@ function saveCurrentMapState() {
   });
 }
 
+function normalizeModalPositionForDrag(modalElement, ui) {
+  const rect = modalElement.getBoundingClientRect();
+
+  $(modalElement).css({
+    transform: "none",
+    left: `${rect.left}px`,
+    top: `${rect.top}px`
+  });
+
+  ui.position.left = rect.left;
+  ui.position.top = rect.top;
+}
+
+function initializeDraggableModals() {
+  if (typeof $.fn.draggable !== "function") return;
+
+  $("[data-draggable]").each(function () {
+    const $handle = $(this);
+    const $modal = $handle.closest(".crud-modal");
+
+    if (!$modal.length) return;
+    if ($modal.data("drag-initialized")) return;
+
+    $modal.draggable({
+      handle: this,
+      scroll: false,
+      start: function (_event, ui) {
+        normalizeModalPositionForDrag(this, ui);
+      }
+    });
+
+    $modal.data("drag-initialized", true);
+  });
+}
+
+function centerModal($modal) {
+  if (!$modal.length) return;
+
+  const modalWidth = $modal.outerWidth();
+  const modalHeight = $modal.outerHeight();
+  if (!modalWidth || !modalHeight) return;
+
+  const left = Math.max((window.innerWidth - modalWidth) / 2, 0);
+  const top = Math.max((window.innerHeight - modalHeight) / 2, 0);
+
+  $modal.css({
+    transform: "none",
+    left: `${left}px`,
+    top: `${top}px`
+  });
+}
+
 function openSettingsModal() {
-    $("#settings-modal").css('display', 'flex');
-    $('#modal-mask').css('display', 'flex');
-    $("#past-positions-input").val(past_positions_limit);
-    $("#display-entity-names").prop("checked", allNamesVisible);
-    $("#display-alerts").prop("checked", allBadgesVisible);
-    $("#enable-history-tracking").prop("checked", showHistory);
-    $("#past-positions-input").prop("disabled", !showHistory);
+  initializeDraggableModals();
+  $("#settings-modal").css('display', 'flex');
+  centerModal($("#settings-modal"));
+  $('#modal-mask').css('display', 'flex');
+  $("#past-positions-input").val(past_positions_limit);
+  $("#display-entity-names").prop("checked", allNamesVisible);
+  $("#display-alerts").prop("checked", allBadgesVisible);
+  $("#enable-history-tracking").prop("checked", showHistory);
+  $("#past-positions-input").prop("disabled", !showHistory);
+  $("#enable-global-size").prop("checked", globalSizeEnabled);
+  $("#global-entity-size-input").val(globalEntitySize);
+  $("#global-entity-size-input").prop("disabled", !globalSizeEnabled);
 }
 
 function closeSettingsModal() {
@@ -1777,31 +1976,76 @@ function closeSettingsModal() {
 }
 
 async function applyGlobalSettings() {
-  const newVal = parseInt($("#past-positions-input").val());
+  const newLimit = parseInt($("#past-positions-input").val(), 10);
+  const newNamesVisible = $("#display-entity-names").is(":checked");
+  const newAlertsVisible = $("#display-alerts").is(":checked");
+  const newShowHistory = $("#enable-history-tracking").is(":checked");
+  const newSizeEnabled = $("#enable-global-size").is(":checked");
+  const newSizeValue = parseInt($("#global-entity-size-input").val(), 10);
 
-  if (!isNaN(newVal) && newVal >= 0) {
-    past_positions_limit = newVal;
+  const limitChanged = newLimit !== past_positions_limit;
+  const visibilityChanged = (newNamesVisible !== allNamesVisible) ||
+    (newAlertsVisible !== allBadgesVisible) ||
+    (newShowHistory !== showHistory);
+  const sizeChanged = (newSizeEnabled !== globalSizeEnabled) ||
+    (newSizeEnabled && newSizeValue !== globalEntitySize);
 
-    allNamesVisible = $("#display-entity-names").is(":checked");
-    allBadgesVisible = $("#display-alerts").is(":checked");
-    showHistory = $("#enable-history-tracking").is(":checked");
-
-    console.log("Applying new settings and saving to file...");
-
-    const dates = await getDates();
-    for (const entity of mapEntities) {
-      await DrawNewAlert(dates.start_date, dates.end_date, entity);
-    }
-
-    updateBadgesVisibility();
-    updateRelatedIconsVisibility();
-    saveCurrentMapState();
-
-    console.log("Limit updated:", past_positions_limit);
-  } else {
-    console.warn("Invalid input for past positions limit.");
+  if (!limitChanged && !visibilityChanged && !sizeChanged) {
+    return;
   }
+
+  past_positions_limit = newLimit;
+  allNamesVisible = newNamesVisible;
+  allBadgesVisible = newAlertsVisible;
+  showHistory = newShowHistory;
+  globalSizeEnabled = newSizeEnabled;
+  globalEntitySize = newSizeValue;
+
+  if (limitChanged) {
+    console.log("Limit changed: fetching new data via Bulk API...");
+    const dates = await getDates();
+    if (dates) {
+      try {
+        const response = await fetchAllAlertsBulk(dates);
+        if (response && response.status === "success") {
+          mapEntities.forEach(entity => {
+            const entityKey = normalizeEntityKey(entity.entity_name);
+            const entityAlerts = response.data[entityKey] || response.data[entity.entity_name] || [];
+            updateEntityDataAndGraphics(entity, entityAlerts, true);
+          });
+        }
+      } catch (e) {
+        console.error("Bulk fetch failed", e);
+      }
+    }
+  } else if (sizeChanged || visibilityChanged) {
+    mapEntities.forEach(e => {
+      if (globalSizeEnabled) e.marker_size = globalEntitySize;
+      updateEntityDataAndGraphics(e, null, true);
+    });
+  }
+
+  updateBadgesVisibility();
+  updateRelatedIconsVisibility();
+
+  saveCurrentMapState();
 }
+
+// Temporary addition for development only
+
+function openResourcesModal() {
+  initializeDraggableModals();
+  $("#resources-modal").css('display', 'flex');
+  centerModal($("#resources-modal"));
+  $('#modal-mask').css('display', 'flex');
+}
+
+function closeResourcesModal() {
+  $('#resources-modal').css('display', 'none');
+  $('#modal-mask').css('display', 'none');
+}
+
+// ------------
 
 function resetMap() {
   if (!confirm("Are you sure you want to permanently delete all markers and rules? This action cannot be undone.")) {

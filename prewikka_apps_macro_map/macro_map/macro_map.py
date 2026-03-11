@@ -261,6 +261,69 @@ class macroMapView(view.View):
     def listing(self):
         return view.ViewResponse(template.PrewikkaTemplate(__name__, "templates/macro_map.mak").render(), menu=mainmenu.HTMLMainMenu())
 
+    def _get_presets_dir(self):
+        return pkg_resources.resource_filename(__name__, "htdocs/samples/presets")
+
+    def _sanitize_preset_filename(self, raw_filename: Any) -> str:
+        if raw_filename is None:
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("Missing preset filename"))
+
+        filename = str(raw_filename).strip()
+        if not filename:
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("Missing preset filename"))
+
+        safe_name = os.path.basename(filename)
+        if safe_name != filename:
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("Invalid preset filename"))
+
+        if not safe_name.lower().endswith(".csv"):
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("Preset must be a CSV file"))
+
+        return safe_name
+
+    @view.route("/macro_map/list_presets", methods=["GET"])
+    def list_presets(self):
+        presets_dir = self._get_presets_dir()
+
+        if not os.path.isdir(presets_dir):
+            return {"status": "success", "presets": []}
+
+        filenames = [
+            name for name in os.listdir(presets_dir)
+            if name.lower().endswith(".csv") and os.path.isfile(os.path.join(presets_dir, name))
+        ]
+
+        filenames.sort()
+
+        presets = [
+            {
+                "filename": name,
+                "display_name": os.path.splitext(name)[0].replace("_", " ")
+            }
+            for name in filenames
+        ]
+
+        return {"status": "success", "presets": presets}
+
+    @view.route("/macro_map/load_preset", methods=["POST"])
+    def load_preset(self):
+        safe_name = self._sanitize_preset_filename(env.request.parameters.get("filename"))
+
+        presets_dir = self._get_presets_dir()
+        file_path = os.path.join(presets_dir, safe_name)
+
+        if not os.path.isfile(file_path):
+            raise error.PrewikkaUserError(_("Operation refused"), message=_("Preset file not found"))
+
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            csv_content = f.read()
+
+        return {
+            "status": "success",
+            "filename": safe_name,
+            "csv_content": csv_content
+        }
+
     @view.route("/macro_map/download_sample", methods=["POST"])
     def download_sample(self):
         fmt = env.request.parameters.get("format")
@@ -318,33 +381,109 @@ class macroMapView(view.View):
 
         return self._db.save_assets_on_db(user_id, csv_content)
 
-    @view.route("/get_alerts_by_entityname", methods=["POST"])
-    def get_alerts_by_ip(self):
-        entity_name = env.request.parameters.get("entity_name")
-        start_date = env.request.parameters.get("start_date")
-        end_date = env.request.parameters.get("end_date")
+    @view.route("/macro_map/get_all_alerts_bulk", methods=["POST"])
+    def get_all_alerts_bulk(self):
+        def _to_text(v):
+            if v is None:
+                return ""
+            if isinstance(v, (list, tuple)):
+                if not v:
+                    return ""
+                return _to_text(v[0])
+            return str(v).strip()
 
-        filter_for = ""
+        payload = {}
+        raw_body = getattr(env.request, "body", None)
+
+        if raw_body:
+            try:
+                if isinstance(raw_body, bytes):
+                    raw_body = raw_body.decode("utf-8", errors="ignore")
+                parsed = json.loads(raw_body)
+                if isinstance(parsed, dict):
+                    payload = parsed
+            except Exception:
+                payload = {}
+
+        params = env.request.parameters or {}
+
+        entity_names = payload.get("entities")
+        if entity_names is None:
+            entity_names = params.get("entities", params.get("entities[]", []))
+
+        if isinstance(entity_names, str):
+            s = entity_names.strip()
+            if not s:
+                entity_names = []
+            else:
+                try:
+                    parsed_entities = json.loads(s)
+                    entity_names = parsed_entities if isinstance(parsed_entities, list) else [parsed_entities]
+                except Exception:
+                    entity_names = [x.strip() for x in s.split(",") if x.strip()]
+
+        if not isinstance(entity_names, list):
+            entity_names = [entity_names] if entity_names is not None else []
+
+        entity_names = [
+            _to_text(x)
+            for x in entity_names
+            if _to_text(x)
+        ]
+
+        start_date = payload.get("start_date") or params.get("start_date")
+        end_date = payload.get("end_date") or params.get("end_date")
+
+        if not entity_names:
+            return {"status": "success", "data": {}}
+
+        requested = set(entity_names)
+
+        query_fields = [
+            "idmefv2.entityname",
+            "idmefv2.priority",
+            "idmefv2.analyzer.hostname",
+            "idmefv2.target.ip",
+            "idmefv2.description",
+            "idmefv2.start_time",
+            "idmefv2.vector.id",
+            "idmefv2.vector.category",
+            "idmefv2.vector.geolocation"
+        ]
+
         criteria = Criterion()
+        criteria += Criterion('idmefv2.create_time', '>=', start_date)
+        criteria += Criterion('idmefv2.create_time', '<=', end_date)
 
-        if entity_name is not None:  
-            criteria += Criterion('idmefv2.entityname', '=', entity_name)
-            criteria += Criterion('idmefv2.create_time', '>=', start_date)
-            criteria += Criterion('idmefv2.create_time', '<=', end_date)
-            ret = env.dataprovider.query([
-                "idmefv2.analyzer.hostname", 
-                "idmefv2.priority", 
-                "idmefv2.target.ip", 
-                "idmefv2.description", 
-                "idmefv2.start_time",
-                "idmefv2.vector.id",
-                "idmefv2.vector.category",
-                "idmefv2.vector.geolocation"
-                ], criteria)
+        ret = []
+        try:
+            criteria_with_entities = criteria + Criterion('idmefv2.entityname', 'IN', entity_names)
+            ret = env.dataprovider.query(query_fields, criteria_with_entities)
+        except Exception:
+            ret = env.dataprovider.query(query_fields, criteria)
 
-            return {"status": "success", "data": ret}
+        grouped_data = {}
+        for row in ret:
+            ename = _to_text(row[0] if len(row) > 0 else None)
+            if not ename or ename not in requested:
+                continue
 
-        return {"status": "no_match", "data": []}
+            if ename not in grouped_data:
+                grouped_data[ename] = []
+
+            alert_data = [
+                row[2] if len(row) > 2 else None,
+                row[1] if len(row) > 1 else None,
+                row[3] if len(row) > 3 else None,
+                row[4] if len(row) > 4 else None,
+                row[5] if len(row) > 5 else None,
+                row[6] if len(row) > 6 else None,
+                row[7] if len(row) > 7 else None,
+                row[8] if len(row) > 8 else None,
+            ]
+            grouped_data[ename].append(alert_data)
+
+        return {"status": "success", "data": grouped_data}
 
     @view.route("/navigate_to_table", methods=["POST"])
     def navigate_to_table(self):
@@ -389,6 +528,7 @@ class macroMapView(view.View):
     @view.route("/macro_map/save_state", methods=["POST"])
     def save_state(self):
         state_data = env.request.parameters.get("state_data")
+        
         if not state_data:
             return {"status": "error", "message": "Missing data"}
 
@@ -397,10 +537,10 @@ class macroMapView(view.View):
         try:
             with open(storage_path, "w", encoding="utf-8") as f:
                 f.write(state_data)
-            print(f"DEBUG: Map saved to {storage_path}") 
-            return {"status": "success", "path": storage_path}
+            
+            return {"status": "success", "message": "State saved correctly"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"FileSystem Error: {str(e)}"}
 
     @view.route("/macro_map/load_state", methods=["GET"])
     def load_state(self):

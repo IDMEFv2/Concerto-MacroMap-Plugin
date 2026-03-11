@@ -31,6 +31,7 @@ Users can define rules directly from the UI to control entity appearance:
 
 ### 5. Data Management & Import
 - **CSV Upload**: Bulk import entity definitions using a CSV file (semicolon-delimited).
+- **Quick Start Presets**: Load built-in use-case presets from the upload modal with one click.
 - **Templates**: Download sample CSV and XLSX templates to get started quickly.
 - **Guide**: Built-in Markdown guide available for download, describing all fields and validation rules.
 - **Server-side Validation**: Comprehensive CSV validation with detailed error messages for each row and field.
@@ -73,7 +74,8 @@ Users can define rules directly from the UI to control entity appearance:
 Clicking a marker opens a context menu with the following options:
 - **Search > Go to alerts table**: Navigate to the standard alert listing pre-filtered for that specific entity and alert type.
 - **Marker settings > Edit color rules**: Open the rule editor for that entity.
-- **Actions > Center map on entity**: Pan and zoom the map to centre on the selected entity, and set that position as the new default view.
+- **Actions > Center map on entity**: Pan the map to centre on the selected entity.
+- **Actions > Center and zoom map on entity**: Pan to the selected entity and apply a focused zoom level.
 - **Actions > Delete marker**: Remove the marker from the map.
 
 ### 10. Global Settings
@@ -86,6 +88,8 @@ Access advanced configuration through the settings modal:
 **Visual Settings**
 - **Show entity names**: Globally toggle visibility of all entity name labels.
 - **Show alerts display**: Globally toggle visibility of all alert count badges.
+- **Apply global entity size**: Force a shared icon size for all entities.
+- **Global size**: Set the icon size value (in pixels) when global size is enabled.
 
 **Data Management**
 - **Restore initial map position**: Reset the map view to the original system default (Europe-centred, zoom 5), discarding any saved custom default.
@@ -122,6 +126,9 @@ Supports the following infrastructure types with distinct SVG icons:
 - **Standard codes**: Supports ISO 3166-1 alpha-2 country codes (e.g. `fr`, `us`, `de`).
 - **Extended codes**: Also supports organisation and subnational codes present in the flag assets (e.g. `eu`, `un`, `asean`, `arab`, `gb-eng`, `es-ct`).
 - **Graceful fallback**: If the code has no matching flag image, the badge is silently hidden.
+
+### 15. Testing Resources (Development)
+- **Resources modal**: A development-only modal is available from the map controls to open external testing references.
 
 ---
 
