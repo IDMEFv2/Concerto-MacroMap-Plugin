@@ -7,8 +7,8 @@ This plugin provides a geospatial visualization layer for IDMEFv2 alerts within 
 ### 1. Interactive Map Visualization
 - **Entities**: Displays critical infrastructure assets (Airports, Banks, Hospitals, Nuclear Plants, Ports, and more) on a Leaflet-based map.
 - **Status Badges**: Each entity displays a badge summarising the count of active alerts by severity (High, Medium, Low, Info). Badges can be independently positioned (Up, Down, Left, Right) relative to the marker.
-- **Name Labels**: Each entity can display a name label, independently positioned relative to the marker.
-- **Tooltips**: Hovering over entities displays a rich tooltip showing the entity **Name**, **Town**, and a summary of active alert counts by severity.
+- **Name Labels**: Each entity can display a name label, independently positioned relative to the marker. Label placement adapts to icon size to keep alignment consistent.
+- **Tooltips**: Hovering over entities displays a rich tooltip showing the entity **Name**, **Town**, and a summary of active alert counts by severity, including nationality information through the related flag indicator when available.
 - **Flag Badges**: Entities with a `Nationality` code display a country/organisation flag badge overlaid on the marker icon.
 - **Infrastructure Links**: Entities can be connected by visual lines on the map using the `LinksTo` field, representing infrastructure dependencies.
 
@@ -35,28 +35,48 @@ Users can define rules directly from the UI to control entity appearance:
 - **Templates**: Download sample CSV and XLSX templates to get started quickly.
 - **Guide**: Built-in Markdown guide available for download, describing all fields and validation rules.
 - **Server-side Validation**: Comprehensive CSV validation with detailed error messages for each row and field.
+- **Mandatory Header Columns** (must always be present):
+
+   ```
+   EntityName;Town;Nationality;Latitude;Longitude
+   ```
+
+- **Optional Header Columns** (can be omitted):
+
+   ```
+   Icon;IconSize;NamePosition;NameVisibleZoom;AlertPosition;AlertVisibleZoom;LinksTo
+   ```
+
+- **Default Values for Optional Columns** (used when the column is missing or the row value is empty):
+
+   ```
+   Airport;32;Up;7;Right;7;
+   ```
+
 - **Supported Fields**:
 
   | Field | Description |
   |---|---|
-  | `Name` | Display name shown on the map |
+   | `EntityName` | Display name shown on the map and logical identifier used to associate alerts |
   | `Town` | City/town where the asset is located |
+   | `Nationality` | Country/region code for the flag badge (ISO 3166-1 alpha-2 or exceptions such as `eu`, `un`) |
   | `Latitude` | Geographic latitude (-90 to 90) |
   | `Longitude` | Geographic longitude (-180 to 180) |
   | `Icon` | Icon type (see [Icon Types](#12-multiple-icon-types)) |
-  | `MarkerSize` | Marker size in pixels (≥ 0) |
+   | `IconSize` | Marker size in pixels (≥ 0) |
   | `NamePosition` | Name label position: `Up`, `Down`, `Left`, `Right` |
   | `NameVisibleZoom` | Minimum zoom level to show the name (3–12) |
-  | `BadgePosition` | Alert badge position: `Up`, `Down`, `Left`, `Right` |
-  | `BadgeVisibleZoom` | Minimum zoom level to show the badge (3–12) |
-  | `EntityName` | Logical identifier used to associate alerts |
+   | `AlertPosition` | Alert badge position: `Up`, `Down`, `Left`, `Right` |
+   | `AlertVisibleZoom` | Minimum zoom level to show the badge (3–12) |
   | `LinksTo` | Comma-separated `EntityName` values to draw infrastructure links to |
-  | `Nationality` | Country/region code for the flag badge (ISO 3166-1 alpha-2 or exceptions such as `eu`, `un`) |
 
 ### 6. Persistent State Management
 - **Auto-save**: The plugin automatically saves the current map state (entities, rules, global settings, and map position) after every change.
 - **Server-side Recovery**: Map position, zoom level, entities, and rules are fully restored from `/tmp/prewikka_macro_map/map_state.json` when revisiting the page.
 - **Browser-side Last View**: The last visited map position (center + zoom) is also stored in the browser's `localStorage` and used to restore the viewport immediately on load, before the server state is fetched.
+- **Modal Session Restore**: If a modal is open during a refresh, it is automatically reopened.
+- **Modal Content Restore**: Current values inside modal controls are persisted and restored.
+- **Incremental Modal Autosave**: Modal state is saved on slider/select/checkbox changes and on input blur events.
 - **Manual Reset**: Clear all data and start fresh using the "Reset Map" option in Global Settings.
 - **File-based Storage**: Map state is persisted server-side in `/tmp/prewikka_macro_map/map_state.json`.
 
@@ -86,14 +106,21 @@ Access advanced configuration through the settings modal:
 - **Max past positions**: Configure the maximum number of past drone positions to display (default: 10).
 
 **Visual Settings**
+- **Map layer**: Switch base tiles between `OpenStreetMap` and `Voyager`.
 - **Show entity names**: Globally toggle visibility of all entity name labels.
 - **Show alerts display**: Globally toggle visibility of all alert count badges.
 - **Apply global entity size**: Force a shared icon size for all entities.
 - **Global size**: Set the icon size value (in pixels) when global size is enabled.
+- **Alert badge font size**: Set the global font size used for alert badges.
+- **Name label font size**: Set the global font size used for name labels.
 
 **Data Management**
 - **Restore initial map position**: Reset the map view to the original system default (Europe-centred, zoom 5), discarding any saved custom default.
 - **Reset Map**: Permanently delete all markers, rules, and state — cannot be undone.
+
+**Window Behaviour**
+- **Draggable modals**: Main modals can be moved by dragging their header.
+- **Resizable modals**: Main modals support resizing to improve usability on smaller screens.
 
 ### 11. Time-based Filtering
 - **Automatic Synchronization**: Alert queries respect the Prewikka global time range selector.

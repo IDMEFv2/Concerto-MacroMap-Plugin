@@ -45,7 +45,7 @@
     <div id="map"></div>
   </div>
 
-  <div id="upload-modal" class="crud-modal-border crud-modal">
+  <div id="upload-modal" class="crud-modal-border crud-modal" data-resizable="true">
     <div class="custom-modal-header bg-primary ui-front" data-draggable="true">
       <div class="flex justify-between">
         <h3>Upload your entities into the map</h3>
@@ -96,7 +96,7 @@
     </div>
   </div>
 
-  <div id="rules-modal" class="crud-modal-border crud-modal">
+  <div id="rules-modal" class="crud-modal-border crud-modal" data-resizable="true">
     <div class="custom-modal-header bg-primary ui-front" data-draggable="true">
       <div class="flex justify-between">
         <h3>Define the entity's color rules</h3>
@@ -111,40 +111,38 @@
     </div>
 
     <!-- icon color rules -->
-    <div class="custom-modal">
-      <div class="custom-modal-body">
-        <span class="pb-1 bold">
-          Rules are evaluated from top to bottom (Rule 1 → Rule N). The first matching rule determines the icon color.
-        </span>
+    <div class="custom-modal-body">
+      <span class="pb-1 bold">
+        Rules are evaluated from top to bottom (Rule 1 → Rule N). The first matching rule determines the icon color.
+      </span>
 
-        <div id="rules-grid-container" class="rules-container"></div>
-        <div class="mt-1">
-          <button id="add-rule-button" class="btn btn-primary" type="button">Add rule</button>
-          <div id="insert-rules-div" class="flex gap-1 justify-between" style="display: none;">
-            <div class="flex gap-1">
-              <div class="flex gap-1 flex-col">
-                <span class="bold">Rule type:</span>
-                <select name="rule-type" id="type-dropdown" class="rule-input" data-field="metric">
-                  <option value="percentage">Percentage</option>
-                  <option value="regex">Regex</option>
-                </select>
-              </div>
-              <div class="flex gap-1 flex-col">
-                <span class="bold">Position:</span>
-                <input type="number" id="position-input" class="rule-input" data-field="position" value="1" min="1" />
-              </div>
+      <div id="rules-grid-container" class="rules-container"></div>
+      <div class="mt-1">
+        <button id="add-rule-button" class="btn btn-primary" type="button">Add rule</button>
+        <div id="insert-rules-div" class="flex gap-1 justify-between" style="display: none;">
+          <div class="flex gap-1">
+            <div class="flex gap-1 flex-col">
+              <span class="bold">Rule type:</span>
+              <select name="rule-type" id="type-dropdown" class="rule-input" data-field="metric">
+                <option value="percentage">Percentage</option>
+                <option value="regex">Regex</option>
+              </select>
             </div>
-            <div class="flex gap-1 mt-auto">
-              <button id="cancel-rules-button" class="btn btn-secondary" type="button">Cancel</button>
-              <button id="insert-rules-button" class="btn btn-primary" type="button">Confirm</button>
+            <div class="flex gap-1 flex-col">
+              <span class="bold">Position:</span>
+              <input type="number" id="position-input" class="rule-input" data-field="position" value="1" min="1" />
             </div>
+          </div>
+          <div class="flex gap-1 mt-auto">
+            <button id="cancel-rules-button" class="btn btn-secondary" type="button">Cancel</button>
+            <button id="insert-rules-button" class="btn btn-primary" type="button">Confirm</button>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="settings-modal" class="crud-modal-border crud-modal">
+  <div id="settings-modal" class="crud-modal-border crud-modal" data-resizable="true">
     <div class="custom-modal-header bg-primary ui-front" data-draggable="true">
       <div class="flex justify-between">
         <h3>Global Map Settings</h3>
@@ -174,6 +172,13 @@
         <hr class="modal-hr">
         <div class="flex flex-col gap-1 wrap">
           <span class="bold">Visual Settings</span>
+          <div class="flex align-center justify-between gap-1 pl-1 pr-1 mt-1">
+            <span>Map layer:</span>
+            <select id="map-layer-select" class="modal-input" style="width: 180px;">
+              <option value="osm">OpenStreetMap</option>
+              <option value="voyager">Voyager</option>
+            </select>
+          </div>
           <div class="flex align-center justify-between pl-1 pr-1 mt-1">
             <span>Show entity names:</span>
             <label class="switch">
@@ -199,6 +204,14 @@
             <span>Global size:</span>
           <input type="number" id="global-entity-size-input" class="modal-input" style="width: 80px;" min="0" value="32">
         </div>
+          <div class="flex align-center justify-between gap-1 pl-1 pr-1">
+            <span>Alert badge font size:</span>
+            <input type="number" id="alert-display-size-input" class="modal-input" style="width: 80px;" min="1" value="11">
+          </div>
+          <div class="flex align-center justify-between gap-1 pl-1 pr-1">
+            <span>Name label font size:</span>
+            <input type="number" id="name-display-size-input" class="modal-input" style="width: 80px;" min="1" value="11">
+          </div>
         </div>
         <hr class="modal-hr">
         <div class="flex flex-col gap-1 wrap">
@@ -223,7 +236,7 @@
   </div>
 
   <!-- Temporary addition for development only -->
-  <div id="resources-modal" class="crud-modal-border crud-modal">
+  <div id="resources-modal" class="crud-modal-border crud-modal" data-resizable="true">
     <div class="custom-modal-header bg-primary ui-front" data-draggable="true">
       <div class="flex justify-between">
         <h3>Testing Resources</h3>

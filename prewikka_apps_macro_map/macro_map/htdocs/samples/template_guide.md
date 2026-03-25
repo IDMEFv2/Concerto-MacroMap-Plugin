@@ -1,3 +1,4 @@
+
 # Macro Map – Import File Guide
 
 This document describes the structure and rules of the data used to import assets into the Macro Map.
@@ -24,13 +25,45 @@ This structure is identical across all supported file formats.
 
 ---
 
+## Column Order
+
+The complete CSV header is:
+
+```
+EntityName;Town;Nationality;Latitude;Longitude;Icon;IconSize;NamePosition;NameVisibleZoom;AlertPosition;AlertVisibleZoom;LinksTo
+```
+
+Only the following columns are strictly required and must always be present:
+
+```
+EntityName;Town;Nationality;Latitude;Longitude
+```
+
+The following columns are optional and can be omitted from the file header:
+
+```
+Icon;IconSize;NamePosition;NameVisibleZoom;AlertPosition;AlertVisibleZoom;LinksTo
+```
+
+If one optional column is missing (or empty in a row), the system automatically applies these defaults:
+
+```
+Airport;32;Up;7;Right;7;
+```
+
+For `LinksTo`, the default is an empty string.
+
+---
+
 ## Field Details
 
-### Name
-- **Description:** Display name of the asset shown on the map
+### EntityName
+- **Description:** Display name of the asset shown on the map, and logical identifier used to associate alerts and rules
 - **Type:** Text
 - **Rules:**
   - Must not be empty
+  - Must match the entity name used by the alerting system
+  - Used as the visible label on the map and internally to retrieve alerts and apply color rules
 
 ---
 
@@ -39,6 +72,26 @@ This structure is identical across all supported file formats.
 - **Type:** Text
 - **Rules:**
   - Must not be empty
+
+---
+
+### Nationality
+- **Description:** Country or region code used to display a flag badge on the marker icon
+- **Type:** Text (optional)
+- **Rules:**
+  - Not validated at import time
+  - Can be empty (leave the field blank)
+  - Should follow the ISO 3166-1 alpha-2 standard (e.g. `fr`, `us`, `de`, `it`), but exceptions are allowed for special regions, organizations, or subnational flags if present in the system
+  - If the code does not correspond to an available flag image, the badge is automatically hidden
+- **Notable exceptions:**
+  - `eu` (European Union)
+  - `asean` (ASEAN)
+  - `arab` (Arab League)
+  - `un` (United Nations)
+  - `gb-eng`, `gb-sct`, `gb-wls`, `gb-nir` (UK subnational flags)
+  - `es-ct`, `es-ga`, `es-pv` (Spanish regions)
+  - Other codes as present in the `assets/flags` directory
+- **Example:** `fr`, `eu`, `un`, `gb-eng`
 
 ---
 
@@ -64,8 +117,10 @@ This structure is identical across all supported file formats.
 - **Description:** Icon type used to represent the asset on the map
 - **Type:** Text
 - **Rules:**
+  - Optional field
   - Currently not validated against the list at import time
   - Must match one of the available icon types (case-sensitive)
+  - Default value: `Airport`
 - **Available values:**
   - `Administration`
   - `Airport`
@@ -81,18 +136,23 @@ This structure is identical across all supported file formats.
 
 ---
 
-### MarkerSize
+### IconSize
 - **Description:** Size of the marker icon in pixels
 - **Type:** Integer
 - **Rules:**
+  - Optional field
   - Must be an integer
   - Must be greater than or equal to **0**
+  - Default value: `32`
 
 ---
 
 ### NamePosition
 - **Description:** Position of the name label relative to the marker
 - **Type:** Enum
+- **Rules:**
+  - Optional field
+  - Default value: `Up`
 - **Allowed values:**
   - `Up`
   - `Down`
@@ -105,14 +165,19 @@ This structure is identical across all supported file formats.
 - **Description:** Minimum zoom level at which the name label becomes visible
 - **Type:** Integer
 - **Rules:**
+  - Optional field
   - Must be an integer
   - Range: **3 to 12**
+  - Default value: `7`
 
 ---
 
-### BadgePosition
-- **Description:** Position of the badge relative to the marker
+### AlertPosition
+- **Description:** Position of the alert badge relative to the marker
 - **Type:** Enum
+- **Rules:**
+  - Optional field
+  - Default value: `Right`
 - **Allowed values:**
   - `Up`
   - `Down`
@@ -121,22 +186,14 @@ This structure is identical across all supported file formats.
 
 ---
 
-### BadgeVisibleZoom
-- **Description:** Minimum zoom level at which the badge becomes visible
+### AlertVisibleZoom
+- **Description:** Minimum zoom level at which the alert badge becomes visible
 - **Type:** Integer
 - **Rules:**
+  - Optional field
   - Must be an integer
   - Range: **3 to 12**
-
----
-
-### EntityName
-- **Description:** Logical identifier of the asset used to associate alerts and rules
-- **Type:** Text
-- **Rules:**
-  - Must not be empty
-  - Must match the entity name used by the alerting system
-  - Used internally to retrieve alerts and apply color rules
+  - Default value: `7`
 
 ---
 
@@ -144,30 +201,12 @@ This structure is identical across all supported file formats.
 - **Description:** Comma-separated list of `EntityName` values that this asset is visually connected to on the map (infrastructure links drawn as lines)
 - **Type:** Text (optional)
 - **Rules:**
+  - Optional field
   - Not validated at import time
   - Can be empty (leave the field blank or use `""`)
+  - Default value: empty string
   - Each value must correspond to the `EntityName` of another asset present on the map; unresolved names are silently ignored
 - **Example:** `Entity A,Entity B`
-
----
-
-### Nationality
-- **Description:** Country or region code used to display a flag badge on the marker icon
-- **Type:** Text (optional)
-- **Rules:**
-  - Not validated at import time
-  - Can be empty (leave the field blank)
-  - Should follow the ISO 3166-1 alpha-2 standard (e.g. `fr`, `us`, `de`, `it`), but exceptions are allowed for special regions, organizations, or subnational flags if present in the system
-  - If the code does not correspond to an available flag image, the badge is automatically hidden
-- **Notable exceptions:**
-  - `eu` (European Union)
-  - `asean` (ASEAN)
-  - `arab` (Arab League)
-  - `un` (United Nations)
-  - `gb-eng`, `gb-sct`, `gb-wls`, `gb-nir` (UK subnational flags)
-  - `es-ct`, `es-ga`, `es-pv` (Spanish regions)
-  - Other codes as present in the `assets/flags` directory
-- **Example:** `fr`, `eu`, `un`, `gb-eng`
 
 ---
 
@@ -191,26 +230,25 @@ Zoom levels define **when** labels and badges appear on the map.
 
 | Field             | Type     | Valid Values / Rules                             |
 |-------------------|----------|--------------------------------------------------|
-| Name              | Text     | Non-empty                                        |
+| EntityName        | Text     | Non-empty; serves as both display name and alert identifier |
 | Town              | Text     | Non-empty                                        |
+| Nationality       | Text     | ISO 3166-1 alpha-2 country code (e.g. `fr`)      |
 | Latitude          | Number   | -90 to 90                                        |
 | Longitude         | Number   | -180 to 180                                      |
 | Icon              | Text     | Administration, Airport, Bank, Hospital, Industry, Nuclear, Port, Radar, Telecom, Water, Drone |
-| MarkerSize        | Integer  | ≥ 0                                              |
+| IconSize          | Integer  | ≥ 0                                              |
 | NamePosition      | Enum     | Up, Down, Left, Right                            |
 | NameVisibleZoom   | Integer  | 3 to 12                                          |
-| BadgePosition     | Enum     | Up, Down, Left, Right                            |
-| BadgeVisibleZoom  | Integer  | 3 to 12                                          |
-| EntityName        | Text     | Non-empty, valid alert entity identifier         |
+| AlertPosition     | Enum     | Up, Down, Left, Right                            |
+| AlertVisibleZoom  | Integer  | 3 to 12                                          |
 | LinksTo           | Text     | Comma-separated list of EntityName values, can be an empty string |
-| Nationality       | Text     | ISO 3166-1 alpha-2 country code (e.g. `fr`)      |
 
 ---
 
 ## Common Errors
 
 - Missing or misspelled field names
-- Empty `Name`, `Town`, or `EntityName` field
+- Empty `EntityName` or `Town` field
 - Latitude or Longitude outside the valid range
 - Invalid enum values (e.g. `UP` instead of `Up`)
 - Non-integer zoom values

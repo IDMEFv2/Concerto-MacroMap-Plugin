@@ -14,11 +14,35 @@ let globalSizeEnabled = false;
 let globalEntitySize = 32;
 let selectedCsvFile = null;
 let selectedCsvText = null;
+let mapLayer = null;
+let alertDisplaySize = 11;
+let nameDisplaySize = 11;
+let currentMapLayerKey = "osm";
+let isRestoringModalState = false;
 const FLAG_PATH = "macro_map/assets/flags/";
 const FLAG_STYLE = {
   border: "0.5px solid #333",
   background: "white",
   boxShadow: "1px 1px 3px rgba(0,0,0,0.3)"
+};
+const MAP_LAYER_CONFIGS = {
+  osm: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    options: {
+      attribution: "© OpenStreetMap contributors",
+      maxZoom: 19,
+      noWrap: true,
+    }
+  },
+  voyager: {
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    options: {
+      attribution: "© OpenStreetMap contributors © CARTO",
+      subdomains: "abcd",
+      maxZoom: 19,
+      noWrap: true,
+    }
+  }
 };
 const DEFAULT_ICON_RULES = [
   {
@@ -73,16 +97,20 @@ async function initializeMap() {
 
   const startView = sessionView || SYSTEM_DEFAULT;
 
+  const corner1 = L.latLng(-90, -180);
+  const corner2 = L.latLng(90, 180);
+  bounds = L.latLngBounds(corner1, corner2);
+
   map = L.map("map", {
     center: startView.center,
     zoom: startView.zoom,
     minZoom: 2.9,
+    maxBounds: bounds,
+    maxBoundsViscosity: 1.0,
+    worldCopyJump: false
   });
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap contributors",
-    maxZoom: 19,
-  }).addTo(map);
+  mapLayer = createMapLayer(currentMapLayerKey).addTo(map);
 
   map.on("zoomend", updateBadgesVisibility);
   map.on("zoomend", updateRelatedIconsVisibility);
@@ -97,18 +125,22 @@ async function initializeMap() {
   });
 
   await loadSavedMapState();
-
+  await restoreModalState();
+  
   initializeDraggableModals();
+  initializeResizableModals();
   await initializePresetButtons();
 
   $("#close-upload-modal").on("click", function () {
     $('#upload-modal').css('display', 'none');
     $('#modal-mask').css('display', 'none');
+    clearModalSessionState();
   })
 
   $("#close-rules-modal").on("click", function () {
     $('#rules-modal').css('display', 'none');
     $('#modal-mask').css('display', 'none');
+    clearModalSessionState();
   })
 
   $("#add-rule-button").on("click", function () {
@@ -332,13 +364,17 @@ async function initializeMap() {
   });
 
   bindRulesEditor("#rules-grid-container");
+  bindModalSessionAutoSave();
 }
 
-function openUploadModal() {
+function openUploadModal(shouldPersistState = true) {
   initializeDraggableModals();
   $("#upload-modal").css('display', 'flex');
   centerModal($("#upload-modal"));
   $('#modal-mask').css('display', 'flex');
+  if (shouldPersistState) {
+    saveModalSessionState('upload-modal');
+  }
 }
 
 function fadeIn() {
@@ -472,9 +508,25 @@ async function fetchAllAlertsBulk(dates) {
 }
 
 function createEntityTooltipHtml(obj) {
+  let nameDiv = `<div style="font-weight: bold; font-size: 13px;">
+        ${obj.name}
+      </div>`;
+
+  // Flag
+  const sanitizedFlag = obj.nationality ? obj.nationality.trim().toLowerCase() : null;
+  
+  if(sanitizedFlag) {
+    nameDiv = `<div style="font-weight: bold; font-size: 13px; display: flex; justify-content: center; align-items: center; gap: 4px;">
+        ${obj.name}
+        <img src="${FLAG_PATH}${sanitizedFlag}.svg" 
+               style="width: 16px; height: 14px; object-fit: cover; display: block;"
+               onerror="this.parentElement.style.display='none';">
+      </div>`;
+  }
+  
   return `
     <div style="text-align: center; min-width: 120px; padding: 2px;">
-      <div style="font-weight: bold; font-size: 13px;">${obj.name}</div>
+      ${nameDiv}
       ${obj.town ? `<div style="font-style: italic; color: #666; font-size: 11px;">${obj.town}</div>` : ''}
       ${getAlertsHtmlForTooltip(obj)}
     </div>
@@ -563,7 +615,7 @@ function createBadgeHtml(obj) {
   };
 
   return `
-    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px; cursor: ${isClickable ? 'pointer' : 'default'};">
+    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px; cursor: ${isClickable ? 'pointer' : 'default'}; font-size:${alertDisplaySize}px;">
       <span class="h" ${getOnClick('High')}>${obj.a_high || 0}</span>
       <span class="m" ${getOnClick('Medium')}>${obj.a_medium || 0}</span>
       <span class="l" ${getOnClick('Low')}>${obj.a_low || 0}</span>
@@ -579,7 +631,7 @@ function createNameBadgeHtml(obj) {
   const radiusPx = sizePx / 2;
 
   return `
-    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px;">
+    <div class="badge-box ${posClass}" style="--icon-radius:${radiusPx}px; font-size:${nameDisplaySize}px;">
       <span class="name-display">${obj.name}</span>
     </div>
   `;
@@ -841,16 +893,19 @@ function deleteMarkerFromMap(entity) {
 }
 
 // Functions to render the rules grid
-function openRulesModal(entity) {
+function openRulesModal(entity, shouldPersistState = true) {
   initializeDraggableModals();
   $("#rules-modal").css("display", "flex");
-  centerModal($("#rules-modal"));
   $("#modal-mask").css("display", "flex");
-
+  
   $("#rules-modal-title").text(`Rules for: ${entity.entity_name || entity.name || entity.id}`);
-
+  
   const container = document.querySelector("#rules-grid-container");
   renderRulesGrid(container, entity);
+  centerModal($("#rules-modal"));
+  if (shouldPersistState) {
+    saveModalSessionState('rules-modal', entity.id);
+  }
 }
 
 function renderRulesGrid(containerEl, entity) {
@@ -1793,6 +1848,12 @@ async function loadSavedMapState() {
       const savedGlobalSize = Number(res.global_settings.global_size_value ?? globalEntitySize);
       globalEntitySize = Number.isFinite(savedGlobalSize) && savedGlobalSize >= 1 ? savedGlobalSize : 32;
       past_positions_limit = res.global_settings.history_limit ?? 10;
+      alertDisplaySize = Number(res.global_settings.alert_display_size ?? alertDisplaySize) || 11;
+      nameDisplaySize = Number(res.global_settings.name_display_size ?? nameDisplaySize) || 11;
+      const savedMapLayerKey = normalizeMapLayerKey(res.global_settings.map_layer);
+      if (savedMapLayerKey !== currentMapLayerKey) {
+        setMapLayer(savedMapLayerKey);
+      }
     }
 
     if (res.map_config) {
@@ -1891,7 +1952,10 @@ function saveCurrentMapState() {
       global_size: globalSizeEnabled,
       global_size_enabled: globalSizeEnabled,
       global_size_value: globalEntitySize,
-      history_limit: past_positions_limit
+      history_limit: past_positions_limit,
+      map_layer: currentMapLayerKey,
+      alert_display_size: alertDisplaySize,
+      name_display_size: nameDisplaySize
     },
     assets: assetsToSave
   };
@@ -1938,11 +2002,37 @@ function initializeDraggableModals() {
   });
 }
 
+function initializeResizableModals() {
+  if (typeof $.fn.resizable !== "function") return;
+
+  $("[data-resizable='true']").each(function () {
+    const $modal = $(this);
+
+    if (!$modal.length) return;
+    if ($modal.data("resize-initialized")) return;
+
+    $modal.resizable({
+      handles: "n,e,s,w,se,sw,ne,nw",
+      minWidth: 420,
+      minHeight: 240,
+      containment: "document",
+      start: function (_event, ui) {
+        normalizeModalPositionForDrag(this, ui);
+      }
+    });
+
+    $modal.data("resize-initialized", true);
+  });
+}
+
 function centerModal($modal) {
   if (!$modal.length) return;
 
+  $modal.css({ display: 'flex', visibility: 'hidden' });
+
   const modalWidth = $modal.outerWidth();
   const modalHeight = $modal.outerHeight();
+
   if (!modalWidth || !modalHeight) return;
 
   const left = Math.max((window.innerWidth - modalWidth) / 2, 0);
@@ -1951,11 +2041,12 @@ function centerModal($modal) {
   $modal.css({
     transform: "none",
     left: `${left}px`,
-    top: `${top}px`
+    top: `${top}px`,
+    visibility: 'visible',
   });
 }
 
-function openSettingsModal() {
+function openSettingsModal(shouldPersistState = true) {
   initializeDraggableModals();
   $("#settings-modal").css('display', 'flex');
   centerModal($("#settings-modal"));
@@ -1968,11 +2059,18 @@ function openSettingsModal() {
   $("#enable-global-size").prop("checked", globalSizeEnabled);
   $("#global-entity-size-input").val(globalEntitySize);
   $("#global-entity-size-input").prop("disabled", !globalSizeEnabled);
+  $("#map-layer-select").val(currentMapLayerKey);
+  $("#alert-display-size-input").val(alertDisplaySize);
+  $("#name-display-size-input").val(nameDisplaySize);
+  if (shouldPersistState) {
+    saveModalSessionState('settings-modal');
+  }
 }
 
 function closeSettingsModal() {
   $('#settings-modal').css('display', 'none');
   $('#modal-mask').css('display', 'none');
+  clearModalSessionState();
 }
 
 async function applyGlobalSettings() {
@@ -1982,6 +2080,9 @@ async function applyGlobalSettings() {
   const newShowHistory = $("#enable-history-tracking").is(":checked");
   const newSizeEnabled = $("#enable-global-size").is(":checked");
   const newSizeValue = parseInt($("#global-entity-size-input").val(), 10);
+  const selectedMapLayerKey = normalizeMapLayerKey($("#map-layer-select").val());
+  const newAlertDisplaySize = parseInt($("#alert-display-size-input").val(), 10);
+  const newNameDisplaySize = parseInt($("#name-display-size-input").val(), 10);
 
   const limitChanged = newLimit !== past_positions_limit;
   const visibilityChanged = (newNamesVisible !== allNamesVisible) ||
@@ -1989,8 +2090,11 @@ async function applyGlobalSettings() {
     (newShowHistory !== showHistory);
   const sizeChanged = (newSizeEnabled !== globalSizeEnabled) ||
     (newSizeEnabled && newSizeValue !== globalEntitySize);
+  const mapLayerChanged = selectedMapLayerKey !== currentMapLayerKey;
+  const displaySizeChanged = (newAlertDisplaySize !== alertDisplaySize) ||
+    (newNameDisplaySize !== nameDisplaySize);
 
-  if (!limitChanged && !visibilityChanged && !sizeChanged) {
+  if (!limitChanged && !visibilityChanged && !sizeChanged && !mapLayerChanged && !displaySizeChanged) {
     return;
   }
 
@@ -2001,8 +2105,16 @@ async function applyGlobalSettings() {
   globalSizeEnabled = newSizeEnabled;
   globalEntitySize = newSizeValue;
 
+  if (mapLayerChanged) {
+    setMapLayer(selectedMapLayerKey);
+  }
+
+  if (displaySizeChanged) {
+    alertDisplaySize = newAlertDisplaySize;
+    nameDisplaySize = newNameDisplaySize;
+  }
+
   if (limitChanged) {
-    console.log("Limit changed: fetching new data via Bulk API...");
     const dates = await getDates();
     if (dates) {
       try {
@@ -2018,9 +2130,18 @@ async function applyGlobalSettings() {
         console.error("Bulk fetch failed", e);
       }
     }
-  } else if (sizeChanged || visibilityChanged) {
+  } else if (sizeChanged || visibilityChanged || displaySizeChanged) {
     mapEntities.forEach(e => {
       if (globalSizeEnabled) e.marker_size = globalEntitySize;
+
+      if (e.name_marker) {
+        e.name_marker.setIcon(buildNameBadge(e));
+      }
+
+      if (e.badge_marker) {
+        e.badge_marker.setIcon(buildBadgeIcon(e));
+      }
+
       updateEntityDataAndGraphics(e, null, true);
     });
   }
@@ -2033,16 +2154,21 @@ async function applyGlobalSettings() {
 
 // Temporary addition for development only
 
-function openResourcesModal() {
+function openResourcesModal(shouldPersistState = true) {
   initializeDraggableModals();
+  initializeResizableModals();
   $("#resources-modal").css('display', 'flex');
   centerModal($("#resources-modal"));
   $('#modal-mask').css('display', 'flex');
+  if (shouldPersistState) {
+    saveModalSessionState('resources-modal');
+  }
 }
 
 function closeResourcesModal() {
   $('#resources-modal').css('display', 'none');
   $('#modal-mask').css('display', 'none');
+  clearModalSessionState();
 }
 
 // ------------
@@ -2133,6 +2259,38 @@ function restoreDefaultMapPosition() {
   closeSettingsModal();
 }
 
+function normalizeMapLayerKey(value) {
+  const normalized = (value || "").toString().trim().toLowerCase();
+  return MAP_LAYER_CONFIGS[normalized] ? normalized : "osm";
+}
+
+function createMapLayer(layerKey) {
+  const normalizedKey = normalizeMapLayerKey(layerKey);
+  const layerConfig = MAP_LAYER_CONFIGS[normalizedKey];
+
+  return L.tileLayer(layerConfig.url, {
+    ...layerConfig.options,
+    bounds: bounds,
+  });
+}
+
+function setMapLayer(layerKey) {
+  const normalizedKey = normalizeMapLayerKey(layerKey);
+  if (normalizedKey === currentMapLayerKey && mapLayer) {
+    return false;
+  }
+
+  const nextLayer = createMapLayer(normalizedKey);
+
+  if (mapLayer && map.hasLayer(mapLayer)) {
+    map.removeLayer(mapLayer);
+  }
+
+  mapLayer = nextLayer.addTo(map);
+  currentMapLayerKey = normalizedKey;
+  return true;
+}
+
 function getAlertsHtmlForTooltip(entity) {
   const colors = {
     high: "#FE0000",
@@ -2143,9 +2301,138 @@ function getAlertsHtmlForTooltip(entity) {
 
   return `
     <div style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 8px; display: flex; gap: 4px; justify-content: center;">
-        <div style="background:${colors.high}; color:white; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;" title="High">${entity.a_high || 0}</div>
-        <div style="background:${colors.medium}; color:white; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;" title="Medium">${entity.a_medium || 0}</div>
-        <div style="background:${colors.low}; color:white; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;" title="Low">${entity.a_low || 0}</div>
-        <div style="background:${colors.info}; color:white; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;" title="Info">${entity.a_info || 0}</div>
+        <div style="background:${colors.high}; color:white; padding:2px 6px; border-radius:3px; font-weight:bold;" title="High">${entity.a_high || 0}</div>
+        <div style="background:${colors.medium}; color:white; padding:2px 6px; border-radius:3px; font-weight:bold;" title="Medium">${entity.a_medium || 0}</div>
+        <div style="background:${colors.low}; color:white; padding:2px 6px; border-radius:3px; font-weight:bold;" title="Low">${entity.a_low || 0}</div>
+        <div style="background:${colors.info}; color:white; padding:2px 6px; border-radius:3px; font-weight:bold;" title="Info">${entity.a_info || 0}</div>
     </div>`;
+}
+
+function saveModalSessionState(modalId, entityId = null) {
+  const modalData = collectModalFormState(modalId);
+  const state = {
+    openModal: modalId,
+    selectedEntityId: entityId,
+    modalData: modalData
+  };
+  localStorage.setItem('map_modal_state', JSON.stringify(state));
+}
+
+function clearModalSessionState() {
+  localStorage.removeItem('map_modal_state');
+}
+
+function collectModalFormState(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return {};
+
+  const state = {};
+  const controls = modal.querySelectorAll("input, select, textarea");
+
+  controls.forEach(control => {
+    const key = control.id || control.name;
+    if (!key) return;
+
+    const type = (control.type || "").toLowerCase();
+    if (type === "button" || type === "submit" || type === "reset" || type === "file") {
+      return;
+    }
+
+    if (type === "checkbox" || type === "radio") {
+      state[key] = !!control.checked;
+      return;
+    }
+
+    state[key] = control.value;
+  });
+
+  return state;
+}
+
+function applyModalFormState(modalId, savedState) {
+  if (!savedState || typeof savedState !== "object") return;
+
+  Object.entries(savedState).forEach(([key, value]) => {
+    const byId = document.getElementById(key);
+    const controls = byId ? [byId] : Array.from(document.querySelectorAll(`[name="${key}"]`));
+    if (!controls.length) return;
+
+    controls.forEach(control => {
+      const type = (control.type || "").toLowerCase();
+
+      if (type === "checkbox" || type === "radio") {
+        control.checked = !!value;
+      } else {
+        control.value = value;
+      }
+    });
+  });
+
+  // Keep dependent controls coherent after restore.
+  $("#past-positions-input").prop("disabled", !$("#enable-history-tracking").is(":checked"));
+  $("#global-entity-size-input").prop("disabled", !$("#enable-global-size").is(":checked"));
+}
+
+function bindModalSessionAutoSave() {
+  $(document).on("change", ".crud-modal input[type='checkbox'], .crud-modal input[type='radio'], .crud-modal select", function () {
+    if (isRestoringModalState) return;
+
+    const modalId = $(this).closest(".crud-modal").attr("id");
+    if (!modalId) return;
+
+    const persistedEntityId = modalId === "rules-modal" ? (window.selectedEntityId ?? null) : null;
+    saveModalSessionState(modalId, persistedEntityId);
+  });
+
+  $(document).on("blur", ".crud-modal input:not([type='checkbox']):not([type='radio']):not([type='file']), .crud-modal textarea", function () {
+    if (isRestoringModalState) return;
+
+    const modalId = $(this).closest(".crud-modal").attr("id");
+    if (!modalId) return;
+
+    const persistedEntityId = modalId === "rules-modal" ? (window.selectedEntityId ?? null) : null;
+    saveModalSessionState(modalId, persistedEntityId);
+  });
+}
+
+async function restoreModalState() {
+  const saved = localStorage.getItem('map_modal_state');
+  if (!saved) return;
+
+  try {
+    const state = JSON.parse(saved);
+    const mId = state.openModal;
+    isRestoringModalState = true;
+
+    if (mId === 'settings-modal') {
+      openSettingsModal(false);
+      applyModalFormState('settings-modal', state.modalData);
+    } 
+    else if (mId === 'resources-modal') {
+      openResourcesModal(false);
+      applyModalFormState('resources-modal', state.modalData);
+    } 
+    else if (mId === 'upload-modal') {
+      openUploadModal(false);
+      applyModalFormState('upload-modal', state.modalData);
+    } 
+    else if (mId === 'rules-modal' && state.selectedEntityId) {
+      const entity = mapEntities.find(e => e.id === state.selectedEntityId);
+      console.log(mapEntities);
+      console.log("Restoring rules modal for entity ID:", state.selectedEntityId, "Found entity:", entity);
+      if (entity) {
+        openRulesModal(entity, false);
+        applyModalFormState('rules-modal', state.modalData);
+      }
+    }
+  } catch (e) {
+    console.error("Error while restoring modal session state", e);
+    clearModalSessionState();
+  } finally {
+    isRestoringModalState = false;
+  }
+}
+
+function changeLayer() {
+  setMapLayer("voyager");
 }

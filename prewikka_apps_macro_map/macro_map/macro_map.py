@@ -25,18 +25,17 @@ class FieldGroup(Enum):
 DIRECTIONS_ALLOWED = {"Up", "Down", "Left", "Right"}
 
 FIELD_GROUP_MAP = {
-    "Name": FieldGroup.FreeText,
     "Town": FieldGroup.FreeText,
 
     "Latitude": FieldGroup.Coordinates,
     "Longitude": FieldGroup.Coordinates,
 
     "NamePosition": FieldGroup.Directions,
-    "BadgePosition": FieldGroup.Directions,
+    "AlertPosition": FieldGroup.Directions,
 
-    "MarkerSize": FieldGroup.Integers,
+    "IconSize": FieldGroup.Integers,
     "NameVisibleZoom": FieldGroup.Integers,
-    "BadgeVisibleZoom": FieldGroup.Integers,
+    "AlertVisibleZoom": FieldGroup.Integers,
 
     # "Icon": FieldGroup.Icon,  # none for now
 }
@@ -50,11 +49,17 @@ class Macro_Map(object):
         self.criteria = criteria
 
 class MacroMapDatabase(database.DatabaseHelper):
-    REQUIRED_COLUMNS = [
-        "Name", "Town", "Latitude", "Longitude", "Icon", "MarkerSize",
-        "NamePosition", "NameVisibleZoom", "BadgePosition", "BadgeVisibleZoom",
-        "EntityName", "LinksTo", "Nationality"
-    ]
+    REQUIRED_COLUMNS = ["EntityName", "Town", "Nationality", "Latitude", "Longitude"]
+
+    OPTIONAL_DEFAULTS = {
+        "Icon": "Airport",
+        "IconSize": "32",
+        "NamePosition": "Up",
+        "NameVisibleZoom": "7",
+        "AlertPosition": "Right",
+        "AlertVisibleZoom": "7",
+        "LinksTo": "",
+    }
 
     def save_assets_on_db(self, user_id: str, csv_content: str):
         validation = self.validate_assets(csv_content)
@@ -135,40 +140,58 @@ class MacroMapDatabase(database.DatabaseHelper):
         return header, rows
 
     def _normalize_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        entity_name = (row.get("EntityName") or "").strip()
+        icon_value = self._get_optional_value(row, "Icon")
+        icon_size_value = self._get_optional_value(row, "IconSize")
+        name_position_value = self._get_optional_value(row, "NamePosition")
+        name_visible_zoom_value = self._get_optional_value(row, "NameVisibleZoom")
+        alert_position_value = self._get_optional_value(row, "AlertPosition")
+        alert_visible_zoom_value = self._get_optional_value(row, "AlertVisibleZoom")
+        links_to_value = self._get_optional_value(row, "LinksTo")
+
         return {
-            "name": (row.get("Name") or "").strip(),
+            "name": entity_name,
             "town": (row.get("Town") or "").strip(),
             "lat": self._as_float(row.get("Latitude")),
             "lng": self._as_float(row.get("Longitude")),
-            "iconType": (row.get("Icon") or "").strip(),  # no validation yet
-            "marker_size": self._as_int(row.get("MarkerSize")) or 0,
-            "name_position": (row.get("NamePosition") or "").strip(),
-            "name_visible": self._as_int(row.get("NameVisibleZoom")) or 0,
-            "display_position": (row.get("BadgePosition") or "").strip(),
-            "display_visible": self._as_int(row.get("BadgeVisibleZoom")) or 0,
-            "entity_name": (row.get("EntityName") or "").strip(),
-            "links_to": (row.get("LinksTo") or "").strip(),
+            "iconType": str(icon_value).strip(),  # no validation yet
+            "marker_size": self._as_int(icon_size_value) or 0,
+            "name_position": str(name_position_value).strip(),
+            "name_visible": self._as_int(name_visible_zoom_value) or 0,
+            "display_position": str(alert_position_value).strip(),
+            "display_visible": self._as_int(alert_visible_zoom_value) or 0,
+            "entity_name": entity_name,
+            "links_to": str(links_to_value).strip(),
             "nationality": (row.get("Nationality") or "").strip(),
         }
 
     def _validate_row(self, row: Dict[str, Any]) -> List[str]:
         errors: List[str] = []
 
-        errors.extend(self._validate_free_text("Name", row.get("Name")))
-        errors.extend(self._validate_free_text("Town", row.get("Town")))
         errors.extend(self._validate_free_text("EntityName", row.get("EntityName")))
+        errors.extend(self._validate_free_text("Town", row.get("Town")))
 
         errors.extend(self._validate_coordinates(row))
 
-        errors.extend(self._validate_directions("NamePosition", row.get("NamePosition")))
-        errors.extend(self._validate_directions("BadgePosition", row.get("BadgePosition")))
+        errors.extend(self._validate_directions("NamePosition", self._get_optional_value(row, "NamePosition")))
+        errors.extend(self._validate_directions("AlertPosition", self._get_optional_value(row, "AlertPosition")))
 
-        errors.extend(self._validate_non_negative_int("MarkerSize", row.get("MarkerSize")))
+        errors.extend(self._validate_non_negative_int("IconSize", self._get_optional_value(row, "IconSize")))
 
-        errors.extend(self._validate_int_range("NameVisibleZoom", row.get("NameVisibleZoom"), 3, 12))
-        errors.extend(self._validate_int_range("BadgeVisibleZoom", row.get("BadgeVisibleZoom"), 3, 12))
+        errors.extend(self._validate_int_range("NameVisibleZoom", self._get_optional_value(row, "NameVisibleZoom"), 3, 12))
+        errors.extend(self._validate_int_range("AlertVisibleZoom", self._get_optional_value(row, "AlertVisibleZoom"), 3, 12))
 
         return errors
+
+    def _get_optional_value(self, row: Dict[str, Any], field: str) -> Any:
+        value = row.get(field)
+        if value is None:
+            return self.OPTIONAL_DEFAULTS[field]
+
+        if isinstance(value, str) and value.strip() == "":
+            return self.OPTIONAL_DEFAULTS[field]
+
+        return value
 
     def _validate_free_text(self, field: str, value: Any) -> List[str]:
         s = "" if value is None else str(value).strip()
