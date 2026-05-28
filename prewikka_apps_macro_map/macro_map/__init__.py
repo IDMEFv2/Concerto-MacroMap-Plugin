@@ -2,7 +2,6 @@ from prewikka import pluginmanager, version
 
 from .macro_map import macroMapView
 
-
 class Macro_Map(pluginmanager.PluginPreload): 
     plugin_name = "Macro_Map"
     plugin_author = version.__author__

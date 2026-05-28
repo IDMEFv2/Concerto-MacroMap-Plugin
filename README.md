@@ -14,7 +14,7 @@ This plugin provides a geospatial visualization layer for IDMEFv2 alerts within 
 
 ### 2. Dynamic Alert Visualization
 - **Color Coding**: Entity icons change color (e.g., Green, Yellow, Red) dynamically based on configurable rules.
-- **Vector Tracking**: Automatically visualizes specific vectors, such as **Drones**, when detected in alerts associated with a monitored entity. The drone appears near the target entity.
+- **Source-based Drone Tracking**: Automatically visualizes **Drones** when detected from source category/source id fields in alerts associated with a monitored entity. The drone appears near the target entity.
 
 ### 3. Custom Rule Engine
 Users can define rules directly from the UI to control entity appearance:
@@ -23,7 +23,7 @@ Users can define rules directly from the UI to control entity appearance:
 - **Rule Priority**: Rules are evaluated from top to bottom; the first matching rule determines the icon color.
 - **Dynamic Editing**: Rules can be added, modified, or deleted in real-time with immediate visual feedback.
 
-### 4. Advanced Vector Tracking
+### 4. Advanced Drone Tracking
 - **Drone Path History**: Visualizes the movement history of detected drones with a configurable trail length.
 - **Position Trail**: Historical drone positions are shown with reduced opacity and connect to the target entity via dashed lines.
 - **Real-time Updates**: Drone positions update automatically based on incoming alert data within the selected time range.
@@ -93,15 +93,30 @@ Users can define rules directly from the UI to control entity appearance:
 ### 9. Context Actions
 Clicking a marker opens a context menu with the following options:
 - **Search > Go to alerts table**: Navigate to the standard alert listing pre-filtered for that specific entity and alert type.
+- **Micro Map > Per-plan entries**: When Micro plans exist for the selected entity, the submenu shows one entry per plan name and navigates directly to that specific Micro floor plan.
+- **Micro Map > Open Micro Map**: Fallback entry shown when no plan is available, opening Micro Map on the selected asset without forcing a plan.
 - **Marker settings > Edit color rules**: Open the rule editor for that entity.
 - **Actions > Center map on entity**: Pan the map to centre on the selected entity.
 - **Actions > Center and zoom map on entity**: Pan to the selected entity and apply a focused zoom level.
 - **Actions > Delete marker**: Remove the marker from the map.
 
-### 10. Global Settings
+### 10. Macro/Micro Route Separation And Navigation Contract
+- **Separated route namespaces**: Macro and Micro features now use explicit, non-overlapping route families:
+   - Macro routes: `/macro_map/*`
+   - Micro routes: `/micro_map/*`
+- **Dedicated navigation endpoint**: Macro-to-Micro handoff uses `/macro_map/navigate_to_micro_map` and stores per-user navigation context in `/tmp/prewikka_plugin_navigation/context.json`.
+- **Context payload**: The navigation context includes:
+   - `asset_ref`
+   - `ref_type`
+   - `source`
+   - `svg_name` (when a specific floor plan is selected from the Macro context submenu)
+- **Consumption model**: Micro reads the context via `/micro_map/get_micro_navigation_context`; context is consumed once per user navigation flow.
+- **Plan discovery for context menu**: Macro resolves Micro plan names in bulk through `/micro_map/get_micro_plans_list_bulk` to build the dynamic submenu efficiently.
+
+### 11. Global Settings
 Access advanced configuration through the settings modal:
 
-**Vector History Tracking**
+**Drone History Tracking**
 - **Enable history tracking**: Toggle drone position trail recording on or off.
 - **Max past positions**: Configure the maximum number of past drone positions to display (default: 10).
 
@@ -122,11 +137,11 @@ Access advanced configuration through the settings modal:
 - **Draggable modals**: Main modals can be moved by dragging their header.
 - **Resizable modals**: Main modals support resizing to improve usability on smaller screens.
 
-### 11. Time-based Filtering
+### 12. Time-based Filtering
 - **Automatic Synchronization**: Alert queries respect the Prewikka global time range selector.
-- **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and vector positions.
+- **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and drone positions.
 
-### 12. Multiple Icon Types
+### 13. Multiple Icon Types
 Supports the following infrastructure types with distinct SVG icons:
 
 | Icon name | Description |
@@ -141,20 +156,20 @@ Supports the following infrastructure types with distinct SVG icons:
 | `Radar` | Radar/surveillance installations |
 | `Telecom` | Telecommunications infrastructure |
 | `Water` | Water treatment/supply facilities |
-| `Drone` | Tracked vectors/threats (used for related icons) |
+| `Drone` | Tracked drone/source events (used for related icons) |
 
-### 13. Infrastructure Links
+### 14. Infrastructure Links
 - **Visual connections**: Entities can be linked on the map with lines representing infrastructure dependencies, configured via the `LinksTo` CSV field.
 - **Automatic rendering**: Links are redrawn automatically after every state change.
 - **Multi-target**: A single entity can link to multiple targets using a comma-separated list of `EntityName` values.
 
-### 14. Nationality & Flag Badges
+### 15. Nationality & Flag Badges
 - **Flag overlay**: Each marker can display a small flag badge (bottom-left corner) using the `Nationality` field.
 - **Standard codes**: Supports ISO 3166-1 alpha-2 country codes (e.g. `fr`, `us`, `de`).
 - **Extended codes**: Also supports organisation and subnational codes present in the flag assets (e.g. `eu`, `un`, `asean`, `arab`, `gb-eng`, `es-ct`).
 - **Graceful fallback**: If the code has no matching flag image, the badge is silently hidden.
 
-### 15. Testing Resources (Development)
+### 16. Testing Resources (Development)
 - **Resources modal**: A development-only modal is available from the map controls to open external testing references.
 
 ---

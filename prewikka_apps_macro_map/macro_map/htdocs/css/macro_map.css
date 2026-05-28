@@ -227,23 +227,23 @@
 }
 
 /* Popover css */
-#PopoverOption {
+#MacroPopoverOption {
   display: none;
   position: fixed;
   word-wrap: break-word;
   z-index: 100;
 }
 
-#PopoverOption .popover {
+#MacroPopoverOption .popover {
   display: block;
   font-size: small;
 }
 
-#PopoverOption .popover .top>.arrow {
+#MacroPopoverOption .popover .top>.arrow {
   border-bottom-width: 1px;
 }
 
-#PopoverOption .popover .bottom>.arrow {
+#MacroPopoverOption .popover .bottom>.arrow {
   border-top-width: 11px;
 }
 

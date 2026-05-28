@@ -18,6 +18,7 @@ let mapLayer = null;
 let alertDisplaySize = 11;
 let nameDisplaySize = 11;
 let currentMapLayerKey = "osm";
+let _svgPlansCache = {};
 let isRestoringModalState = false;
 const FLAG_PATH = "macro_map/assets/flags/";
 const FLAG_STYLE = {
@@ -288,18 +289,18 @@ async function initializeMap() {
   });
 
   map.on("movestart", function () {
-    $("#PopoverOption").hide();
+    $("#MacroPopoverOption").hide();
   });
 
   map.on('click', function () {
-    $("#PopoverOption").hide();
+    $("#MacroPopoverOption").hide();
   });
 
   $("#edit_rules").off("click").on("click", function (e) {
     e.preventDefault();
     e.stopPropagation();
 
-    const id = selectedEntityId ?? Number($("#PopoverOption").attr("data-selected-entity-id"));
+    const id = selectedEntityId ?? Number($("#MacroPopoverOption").attr("data-selected-entity-id"));
     if (id == null) {
       console.warn("No selected entity");
       return;
@@ -312,7 +313,7 @@ async function initializeMap() {
     }
 
     openRulesModal(entity);
-    $("#PopoverOption").hide();
+    $("#MacroPopoverOption").hide();
   });
 
   $("#delete_marker").off("click").on("click", function (e) {
@@ -322,7 +323,7 @@ async function initializeMap() {
       return;
     }
 
-    const id = selectedEntityId ?? Number($("#PopoverOption").attr("data-selected-entity-id"));
+    const id = selectedEntityId ?? Number($("#MacroPopoverOption").attr("data-selected-entity-id"));
     if (id == null) {
       console.warn("No selected entity");
       return;
@@ -334,13 +335,12 @@ async function initializeMap() {
       return;
     }
 
-    console.log("Delete marker:", entity);
     deleteMarkerFromMap(entity);
-    $("#PopoverOption").hide();
+    $("#MacroPopoverOption").hide();
   });
 
   $("#alerts_table").on("click", function () {
-    const id = selectedEntityId ?? Number($("#PopoverOption").attr("data-selected-entity-id"));
+    const id = selectedEntityId ?? Number($("#MacroPopoverOption").attr("data-selected-entity-id"));
     if (id == null) {
       console.warn("No selected entity");
       return;
@@ -362,6 +362,32 @@ async function initializeMap() {
   $(document).on("change", "#enable-global-size", function () {
     $("#global-entity-size-input").prop("disabled", !$(this).is(":checked"));
   });
+
+  
+  // Update navigation function to accept planName
+  window.navigate_to_micro_map = function(assetRef, refType, planName) {
+      console.log(planName)
+      const safeAssetRef = String(assetRef || "").trim();
+      const safeRefType = String(refType || "entity_name").trim() || "entity_name";
+      const safePlanName = String(planName || "").trim();
+
+      console.log(safePlanName);
+
+      // Set navigation context and redirect
+      $.ajax({
+        url: "/macro_map/navigate_to_micro_map",
+        type: "POST",
+        data: {
+          asset_ref: safeAssetRef,
+          ref_type: safeRefType,
+          source: "macro_map",
+          svg_name: safePlanName
+        },
+        complete: function(xhr, status) {
+          window.location.href = "/micro_map";
+        }
+      });
+    };
 
   bindRulesEditor("#rules-grid-container");
   bindModalSessionAutoSave();
@@ -430,6 +456,52 @@ function getDbIcons() {
   ]
 }
 
+async function fetchAllSvgPlansBulk() {
+  const assetRefs = mapEntities
+    .map(e => e.entity_name ? String(e.entity_name).trim() : "")
+    .filter(Boolean);
+  if (!assetRefs.length) {
+    _svgPlansCache = {};
+    return;
+  }
+  try {
+    const result = await $.ajax({
+      url: "/micro_map/get_micro_plans_list_bulk",
+      type: "POST",
+      data: { asset_refs: JSON.stringify(assetRefs) },
+      dataType: "json"
+    });
+    if (result && typeof result === "object") {
+      _svgPlansCache = result;
+    } else {
+      console.warn("[fetchAllSvgPlansBulk] backend returned non-object result, clearing cache");
+      _svgPlansCache = {};
+    }
+  } catch (e) {
+    console.error("[fetchAllSvgPlansBulk] bulk fetch failed:", e);
+    _svgPlansCache = {};
+  }
+}
+
+function buildMicroMapMenuForEntity(entity) {
+  const assetRef = entity && entity.entity_name ? String(entity.entity_name).trim() : "";
+  if (!assetRef) {
+    return [{ label: "Open Micro Map", planName: "", action: () => window.navigate_to_micro_map("", "entity_name", "") }];
+  }
+  const plans = (Array.isArray(_svgPlansCache[assetRef]) ? _svgPlansCache[assetRef] : [])
+    .map((name) => String(name || "").trim())
+    .filter(Boolean);
+  if (plans.length > 0) {
+    return plans.map(planName => ({
+      label: planName,
+      planName: planName,
+      action: () => window.navigate_to_micro_map(assetRef, "entity_name", planName)
+    }));
+  } else {
+    return [{ label: "Open Micro Map", planName: "", action: () => window.navigate_to_micro_map(assetRef, "entity_name", "") }];
+  }
+}
+
 function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
   if (Array.isArray(alerts)) {
     obj.a_high = 0; obj.a_medium = 0; obj.a_low = 0; obj.a_info = 0;
@@ -480,7 +552,27 @@ function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
 
     obj.marker.on('click', function () {
       selectedEntityId = obj.id;
-      $("#PopoverOption").attr("data-selected-entity-id", obj.id);
+      $("#MacroPopoverOption").attr("data-selected-entity-id", obj.id);
+      const microMapUl = $("#MacroPopoverOption .popover li").filter(function() {
+        return $(this).children("a").text().trim() === "Micro Map";
+      }).first().children("ul.dropdown-menu").first();
+      if (microMapUl.length) {
+        microMapUl.empty();
+        const items = buildMicroMapMenuForEntity(obj);
+        items.forEach(item => {
+          const li = $("<li><a href='#'>" + item.label + "</a></li>");
+          li.on("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $("#MacroPopoverOption").hide();
+            const clickedPlanName = String(item.planName || item.label || "").trim();
+            window.navigate_to_micro_map(obj.entity_name, "entity_name", clickedPlanName);
+          });
+          microMapUl.append(li);
+        });
+      } else {
+        console.warn("[marker.click] Micro Map submenu container not found in popover");
+      }
       show_popover($(this._icon));
     });
   }
@@ -488,7 +580,7 @@ function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
 
 async function fetchAllAlertsBulk(dates) {
   const entityNames = mapEntities
-    .map(e => normalizeEntityKey(e.entity_name))
+    .map(e => normalizeMacroEntityKey(e.entity_name))
     .filter(Boolean);
 
   if (!entityNames.length) {
@@ -496,7 +588,7 @@ async function fetchAllAlertsBulk(dates) {
   }
 
   return $.ajax({
-    url: "/macro_map/get_all_alerts_bulk",
+    url: "/macro_map/get_macro_alerts_bulk",
     type: "POST",
     dataType: "json",
     data: {
@@ -528,12 +620,12 @@ function createEntityTooltipHtml(obj) {
     <div style="text-align: center; min-width: 120px; padding: 2px;">
       ${nameDiv}
       ${obj.town ? `<div style="font-style: italic; color: #666; font-size: 11px;">${obj.town}</div>` : ''}
-      ${getAlertsHtmlForTooltip(obj)}
+      ${getMacroAlertsHtmlForTooltip(obj)}
     </div>
   `;
 }
 
-function normalizeEntityKey(value) {
+function normalizeMacroEntityKey(value) {
   return (value ?? "").toString().trim();
 }
 
@@ -808,7 +900,7 @@ async function renderUploadedAssetsOnMap(assets) {
   clearAllMarkersFromMap(map);
   mapEntities = [];
 
-  const dates = await getDates();
+  const dates = await getMacroDates();
   if (!dates) return;
 
   (assets || []).forEach(a => {
@@ -844,7 +936,7 @@ async function renderUploadedAssetsOnMap(assets) {
         const allAlerts = response.data;
 
         mapEntities.forEach(obj => {
-          const entityKey = normalizeEntityKey(obj.entity_name);
+          const entityKey = normalizeMacroEntityKey(obj.entity_name);
           const entityAlerts = allAlerts[entityKey] || allAlerts[obj.entity_name] || [];
           updateEntityDataAndGraphics(obj, entityAlerts, true);
         });
@@ -853,6 +945,7 @@ async function renderUploadedAssetsOnMap(assets) {
       console.error("Bulk load during upload failed", e);
       mapEntities.forEach(obj => updateEntityDataAndGraphics(obj, [], true));
     }
+    await fetchAllSvgPlansBulk();
   }
 
   drawInfrastructureLinks();
@@ -889,7 +982,7 @@ function deleteMarkerFromMap(entity) {
   mapEntities = mapEntities.filter(e => e.id !== entity.id);
   drawInfrastructureLinks();
   saveCurrentMapState();
-  $("#PopoverOption").hide();
+  $("#MacroPopoverOption").hide();
 }
 
 // Functions to render the rules grid
@@ -1076,7 +1169,7 @@ function refreshEntityIcon(entity) {
 }
 
 function addRuleToMarker() {
-  const id = selectedEntityId ?? Number($("#PopoverOption").attr("data-selected-entity-id"));
+  const id = selectedEntityId ?? Number($("#MacroPopoverOption").attr("data-selected-entity-id"));
   if (id == null) {
     console.warn("No entity selected");
     return;
@@ -1255,9 +1348,9 @@ function computePerc(entity) {
 }
 
 function show_popover(node) {
-  var popover = $("#PopoverOption .popover");
+  var popover = $("#MacroPopoverOption .popover");
 
-  $("#PopoverOption").css({ "visibility": "hidden", "display": "block" });
+  $("#MacroPopoverOption").css({ "visibility": "hidden", "display": "block" });
 
   var offset = node.offset();
   var top, left = offset.left - popover.width() / 2 + node.width() / 2;
@@ -1292,19 +1385,19 @@ function show_popover(node) {
     popover.find(".dropdown-submenu").addClass("pull-left");
   }
 
-  $("#PopoverOption").css({ "top": top, "left": left, "visibility": "visible" });
+  $("#MacroPopoverOption").css({ "top": top, "left": left, "visibility": "visible" });
 }
 
 // Functions to obtain the date and convert the format
-async function getDates() {
-  var dates = await get_time();
+async function getMacroDates() {
+  var dates = await getMacroTime();
 
   if (!dates.start_date || !dates.end_date) {
     return null;
   }
 
-  const startDate = convertToISO(dates.start_date);
-  const endDate = convertToISO(dates.end_date);
+  const startDate = convertMacroToISO(dates.start_date);
+  const endDate = convertMacroToISO(dates.end_date);
 
   return {
     start_date: startDate,
@@ -1312,16 +1405,16 @@ async function getDates() {
   };
 }
 
-async function get_time() {
+async function getMacroTime() {
   var time = await $.ajax({
-    url: "/get_time",
+    url: "/macro_map/get_macro_time",
     type: "GET"
   });
 
   return time;
 }
 
-function convertToISO(dateStr) {
+function convertMacroToISO(dateStr) {
   var dt = moment.utc(dateStr, "YYYY-MM-DD HH:mm:ssZ");
   return dt.format("YYYY-MM-DD HH:mm:ss.SSSSSS+00:00");
 }
@@ -1335,12 +1428,29 @@ async function navigate_to_table(entityName, alertType) {
     };
 
     await $.ajax({
-      url: "/navigate_to_table",
+      url: "/macro_map/navigate_to_table",
       type: "POST",
       data: body,
       contentType: "application/json"
     });
   }
+}
+
+async function navigate_to_micro_map(assetRef = "", refType = "entity_name", planName = "") {
+  const safeAssetRef = String(assetRef || "").trim();
+  const safeRefType = String(refType || "entity_name").trim() || "entity_name";
+  const safePlanName = String(planName || "").trim();
+
+  await $.ajax({
+    url: "/macro_map/navigate_to_micro_map",
+    type: "POST",
+    data: {
+      asset_ref: safeAssetRef,
+      ref_type: safeRefType,
+      source: "macro_map",
+      svg_name: safePlanName
+    }
+  });
 }
 
 function countAlerts(array, severity) {
@@ -1481,7 +1591,7 @@ function syncRelatedIconsFromAlerts(entity, alertRows) {
 
   const allDronesData = extractLatestDronesFromAlerts(alertRows);
 
-  const currentKeys = new Set(allDronesData.map(d => `${d.vectorId}_${d.timeMs}`));
+  const currentKeys = new Set(allDronesData.map(d => `${d.sourceId}_${d.timeMs}`));
 
   entity.related_icons = entity.related_icons.filter(rel => {
     if (rel.relType === "drone") {
@@ -1496,25 +1606,25 @@ function syncRelatedIconsFromAlerts(entity, alertRows) {
   const pathsById = {};
 
   allDronesData.forEach(d => {
-    upsertRelatedMarkerForEntity(entity, "drone", d.vectorId, d.lat, d.lng, d);
+    upsertRelatedMarkerForEntity(entity, "drone", d.sourceId, d.lat, d.lng, d);
 
-    if (!pathsById[d.vectorId]) pathsById[d.vectorId] = [];
-    pathsById[d.vectorId].push([d.lat, d.lng]);
+    if (!pathsById[d.sourceId]) pathsById[d.sourceId] = [];
+    pathsById[d.sourceId].push([d.lat, d.lng]);
   });
 
-  Object.keys(pathsById).forEach(vectorId => {
-    const coordinates = pathsById[vectorId];
+  Object.keys(pathsById).forEach(sourceId => {
+    const coordinates = pathsById[sourceId];
     if (coordinates.length >= 2) {
       const lineStyle = RELATED_ICON_DEFAULTS.drone.lineOptions;
-      if (!entity._droneLines[vectorId]) {
-        entity._droneLines[vectorId] = L.polyline(coordinates, lineStyle).addTo(map);
+      if (!entity._droneLines[sourceId]) {
+        entity._droneLines[sourceId] = L.polyline(coordinates, lineStyle).addTo(map);
       } else {
-        entity._droneLines[vectorId].setLatLngs(coordinates);
-        entity._droneLines[vectorId].setStyle(lineStyle);
+        entity._droneLines[sourceId].setLatLngs(coordinates);
+        entity._droneLines[sourceId].setStyle(lineStyle);
       }
-    } else if (entity._droneLines[vectorId]) {
-      map.removeLayer(entity._droneLines[vectorId]);
-      delete entity._droneLines[vectorId];
+    } else if (entity._droneLines[sourceId]) {
+      map.removeLayer(entity._droneLines[sourceId]);
+      delete entity._droneLines[sourceId];
     }
   });
 
@@ -1580,23 +1690,23 @@ function extractLatestDronesFromAlerts(rows) {
     if (!r || r.length < 8) return;
 
     const startTime = r[4];
-    const vectorIdRaw = r[5];
+    const sourceIdRaw = r[5];
     const category = r[6];
     const geo = r[7];
 
-    if (!vectorIdRaw || !categoryHasDrone(category)) return;
+    if (!sourceIdRaw || !categoryHasDrone(category)) return;
 
     const pt = parseGeoPoint(geo);
     const timeMs = parseTimeMs(startTime);
     if (!pt || timeMs == null) return;
 
-    const ids = Array.isArray(parseArrayish(vectorIdRaw)) ? parseArrayish(vectorIdRaw) : [vectorIdRaw];
+    const ids = Array.isArray(parseArrayish(sourceIdRaw)) ? parseArrayish(sourceIdRaw) : [sourceIdRaw];
 
-    ids.forEach(vid => {
-      const key = String(vid);
+    ids.forEach(sourceId => {
+      const key = String(sourceId);
       if (!dronesGrouped[key]) dronesGrouped[key] = [];
       dronesGrouped[key].push({
-        vectorId: key,
+        sourceId: key,
         lat: pt.lat,
         lng: pt.lng,
         timeMs,
@@ -1628,11 +1738,13 @@ function categoryHasDrone(categoryValue) {
   const cat = parseArrayish(categoryValue);
   if (!Array.isArray(cat)) return false;
 
+  const droneCategory = "object.vehicles.aircraft";
+
   for (const inner of cat) {
-    if (Array.isArray(inner) && inner.some(x => String(x).toLowerCase() === "drone")) {
+    if (Array.isArray(inner) && inner.some(x => String(x).toLowerCase() === droneCategory)) {
       return true;
     }
-    if (!Array.isArray(inner) && String(inner).toLowerCase() === "drone") {
+    if (!Array.isArray(inner) && String(inner).toLowerCase() === droneCategory) {
       return true;
     }
   }
@@ -1714,10 +1826,10 @@ function findRelatedByKey(entity, relType, relKey) {
   ) || null;
 }
 
-function upsertRelatedMarkerForEntity(entity, relType, vectorId, lat, lng, data, options = {}) {
+function upsertRelatedMarkerForEntity(entity, relType, sourceId, lat, lng, data, options = {}) {
   if (!entity) return null;
 
-  const relKey = `${vectorId}_${data.timeMs}`;
+  const relKey = `${sourceId}_${data.timeMs}`;
   const cfg = getRelatedIconConfig(relType, options);
   if (!cfg) return null;
 
@@ -1788,10 +1900,9 @@ function upsertRelatedMarkerForEntity(entity, relType, vectorId, lat, lng, data,
 function getDroneTooltipContent(data) {
   if (!data) return "";
 
-  // Simple template, easy to modify
   return `
         <div class="drone-tooltip" style="text-align:left;">
-            <b>Drone ID:</b> ${data.vectorId || "Unknown"}<br/>
+            <b>Source ID:</b> ${data.sourceId || "Unknown"}<br/>
             <b>Time:</b> ${data.start_time || "N/A"}<br/>
             <b>Location:</b> ${data.lat?.toFixed(5)}, ${data.lng?.toFixed(5)}<br/>
             <b>Distance:</b> ${data.distance || "N/A"}<br/>
@@ -1806,14 +1917,12 @@ function setDefaultPosition() {
       center: [center.lat, center.lng],
       zoom: map.getZoom()
     };
-    console.log("New default (Home) position set:", defaultView);
     saveCurrentMapState();
   }
 }
 
 function resetMapPosition() {
   if (map) {
-    console.log(defaultView);
     map.setView(defaultView.center, defaultView.zoom);
   }
 }
@@ -1833,7 +1942,7 @@ function centerAndZoomMapOnEntity(entity) {
 async function loadSavedMapState() {
   try {
     const res = await $.ajax({
-      url: "/macro_map/load_state",
+      url: "/macro_map/load_macro_state",
       method: "GET",
       dataType: "json"
     });
@@ -1874,7 +1983,7 @@ async function loadSavedMapState() {
       rawAssets = res.assets.assets;
     }
 
-    const dates = await getDates();
+    const dates = await getMacroDates();
     clearAllMarkersFromMap(map);
     mapEntities = [];
 
@@ -1899,13 +2008,12 @@ async function loadSavedMapState() {
     if (mapEntities.length > 0 && dates) {
       try {
         const bulkRes = await fetchAllAlertsBulk(dates);
-        console.log(bulkRes);
 
         if (bulkRes && bulkRes.status === "success") {
           const allAlerts = bulkRes.data;
 
           mapEntities.forEach(obj => {
-            const entityKey = normalizeEntityKey(obj.entity_name);
+            const entityKey = normalizeMacroEntityKey(obj.entity_name);
             const entityAlerts = allAlerts[entityKey] || allAlerts[obj.entity_name] || [];
             updateEntityDataAndGraphics(obj, entityAlerts, true);
           });
@@ -1914,13 +2022,12 @@ async function loadSavedMapState() {
         console.error("Bulk alerts load failed:", bulkErr);
         mapEntities.forEach(obj => updateEntityDataAndGraphics(obj, [], true));
       }
+      await fetchAllSvgPlansBulk();
     }
 
     drawInfrastructureLinks();
     updateBadgesVisibility();
     updateRelatedIconsVisibility();
-
-    console.log("Map loaded instantly via Bulk API: " + mapEntities.length + " assets ready.");
   } catch (err) {
     console.error("Error loading state:", err);
   }
@@ -2115,13 +2222,13 @@ async function applyGlobalSettings() {
   }
 
   if (limitChanged) {
-    const dates = await getDates();
+    const dates = await getMacroDates();
     if (dates) {
       try {
         const response = await fetchAllAlertsBulk(dates);
         if (response && response.status === "success") {
           mapEntities.forEach(entity => {
-            const entityKey = normalizeEntityKey(entity.entity_name);
+            const entityKey = normalizeMacroEntityKey(entity.entity_name);
             const entityAlerts = response.data[entityKey] || response.data[entity.entity_name] || [];
             updateEntityDataAndGraphics(entity, entityAlerts, true);
           });
@@ -2208,7 +2315,6 @@ function resetMap() {
       });
 
       closeSettingsModal();
-      console.log("Map state successfully reset.");
     } else {
       alert("Error resetting map: " + res.message);
     }
@@ -2220,8 +2326,6 @@ function drawInfrastructureLinks() {
     window.infrastructureLayerGroup = L.layerGroup().addTo(map);
   }
   window.infrastructureLayerGroup.clearLayers();
-
-  console.log("Drawing links for " + mapEntities.length + " entities");
 
   mapEntities.forEach(sourceEntity => {
     // Clean the links_to string (remove leading/trailing spaces and leftover quotes)
@@ -2291,7 +2395,7 @@ function setMapLayer(layerKey) {
   return true;
 }
 
-function getAlertsHtmlForTooltip(entity) {
+function getMacroAlertsHtmlForTooltip(entity) {
   const colors = {
     high: "#FE0000",
     medium: "#f0ad4e",
@@ -2418,8 +2522,6 @@ async function restoreModalState() {
     } 
     else if (mId === 'rules-modal' && state.selectedEntityId) {
       const entity = mapEntities.find(e => e.id === state.selectedEntityId);
-      console.log(mapEntities);
-      console.log("Restoring rules modal for entity ID:", state.selectedEntityId, "Found entity:", entity);
       if (entity) {
         openRulesModal(entity, false);
         applyModalFormState('rules-modal', state.modalData);
@@ -2431,8 +2533,4 @@ async function restoreModalState() {
   } finally {
     isRestoringModalState = false;
   }
-}
-
-function changeLayer() {
-  setMapLayer("voyager");
 }

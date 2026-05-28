@@ -404,7 +404,7 @@ class macroMapView(view.View):
 
         return self._db.save_assets_on_db(user_id, csv_content)
 
-    @view.route("/macro_map/get_all_alerts_bulk", methods=["POST"])
+    @view.route("/macro_map/get_macro_alerts_bulk", methods=["POST"])
     def get_all_alerts_bulk(self):
         def _to_text(v):
             if v is None:
@@ -469,9 +469,9 @@ class macroMapView(view.View):
             "idmefv2.target.ip",
             "idmefv2.description",
             "idmefv2.start_time",
-            "idmefv2.vector.id",
-            "idmefv2.vector.category",
-            "idmefv2.vector.geolocation"
+            "idmefv2.source.id",
+            "idmefv2.source.category",
+            "idmefv2.source.geolocation"
         ]
 
         criteria = Criterion()
@@ -508,7 +508,7 @@ class macroMapView(view.View):
 
         return {"status": "success", "data": grouped_data}
 
-    @view.route("/navigate_to_table", methods=["POST"])
+    @view.route("/macro_map/navigate_to_table", methods=["POST"])
     def navigate_to_table(self):
         entity_name = env.request.parameters.get("entity_name")
         alert_type = env.request.parameters.get("alert_type")
@@ -525,7 +525,26 @@ class macroMapView(view.View):
 
         return {"status": "no_match", "data": []}
 
-    @view.route("/get_time", methods=["GET"])
+    @view.route("/macro_map/navigate_to_micro_map", methods=["POST"])
+    def navigate_to_micro_map(self):
+        asset_ref = (env.request.parameters.get("asset_ref") or "").strip()
+        ref_type = (env.request.parameters.get("ref_type") or "entity_name").strip()
+        source = (env.request.parameters.get("source") or "macro_map").strip()
+        svg_name = (env.request.parameters.get("svg_name") or "").strip()
+
+        context = {
+            "asset_ref": asset_ref,
+            "ref_type": ref_type,
+            "source": source,
+        }
+        if svg_name:
+            context["svg_name"] = svg_name
+
+        self._set_navigation_context_for_current_user(context)
+
+        return {"status": "ok", "svg_name": svg_name}
+
+    @view.route("/macro_map/get_macro_time", methods=["GET"])
     def get_time(self):
         return {
             "start_date": env.request.menu.start, 
@@ -537,6 +556,55 @@ class macroMapView(view.View):
         if not os.path.exists(storage_dir):
             os.makedirs(storage_dir)
         return os.path.join(storage_dir, "map_state.json")
+
+    def _get_navigation_context_path(self):
+        storage_dir = "/tmp/prewikka_plugin_navigation"
+        if not os.path.exists(storage_dir):
+            os.makedirs(storage_dir)
+        return os.path.join(storage_dir, "context.json")
+
+    def _get_current_user_id(self):
+        user_obj = env.request.__dict__.get("user")
+        if user_obj and getattr(user_obj, "id", None):
+            return str(user_obj.id)
+        return "anonymous"
+
+    def _load_navigation_context(self):
+        path = self._get_navigation_context_path()
+        if not os.path.isfile(path):
+            return {"by_user": {}}
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and isinstance(data.get("by_user"), dict):
+                    return data
+        except Exception:
+            pass
+
+        return {"by_user": {}}
+
+    def _save_navigation_context(self, data):
+        path = self._get_navigation_context_path()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    def _set_navigation_context_for_current_user(self, context):
+        data = self._load_navigation_context()
+        user_id = self._get_current_user_id()
+
+        if not isinstance(context, dict):
+            context = {}
+
+        data.setdefault("by_user", {})
+        data["by_user"][user_id] = {
+            "asset_ref": str(context.get("asset_ref") or "").strip(),
+            "ref_type": str(context.get("ref_type") or "entity_name").strip(),
+            "source": str(context.get("source") or "macro_map").strip(),
+            "svg_name": str(context.get("svg_name") or "").strip(),
+        }
+
+        self._save_navigation_context(data)
 
     @view.route("/macro_map/reset_state", methods=["POST"])
     def reset_state(self):
@@ -565,7 +633,7 @@ class macroMapView(view.View):
         except Exception as e:
             return {"status": "error", "message": f"FileSystem Error: {str(e)}"}
 
-    @view.route("/macro_map/load_state", methods=["GET"])
+    @view.route("/macro_map/load_macro_state", methods=["GET"])
     def load_state(self):
         storage_path = self._get_storage_path()
         

@@ -272,13 +272,19 @@
 
   <div id="modal-mask" class="modal-mask"></div>
 
-  <div id="PopoverOption" class="popover-options">
+  <div id="MacroPopoverOption" class="popover-options">
     <ul class="popover dropdown-menu dropdown-menu-theme multi-level" role="menu" aria-labelledby="dropdownMenu">
       <div class="arrow"></div>
       <li class="dropdown-submenu">
         <a>Search</a>
         <ul class="dropdown-menu dropdown-menu-theme">
           <li><a id="alerts_table">Go to alerts table</a></li>
+        </ul>
+      </li>
+      <li class="dropdown-submenu">
+        <a>Micro Map</a>
+        <ul class="dropdown-menu dropdown-menu-theme">
+          <li><a id="to_micro_map">Open Micro Map</a></li>
         </ul>
       </li>
       <li class="dropdown-submenu">
