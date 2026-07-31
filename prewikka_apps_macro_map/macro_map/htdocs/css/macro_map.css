@@ -367,6 +367,11 @@
   font-weight: bold;
 }
 
+.emergency-success-message {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
 .wrap {
   flex-wrap: wrap;
 }

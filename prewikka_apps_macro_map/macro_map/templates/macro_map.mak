@@ -5,7 +5,7 @@
 %>
 
   <link rel="stylesheet" type="text/css" href="macro_map/css/macro_map.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <div id="wrapper" class="plugin-container">
     <div class="map-controls">
@@ -35,6 +35,13 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
           <path
             d="M24 14v-4c-1.619 0-2.906.267-3.705-1.476-.697-1.663.604-2.596 1.604-3.596l-2.829-2.828c-1.033 1.033-1.908 2.307-3.666 1.575-1.674-.686-1.404-2.334-1.404-3.675h-4c0 1.312.278 2.985-1.404 3.675-1.761.733-2.646-.553-3.667-1.574l-2.829 2.828c1.033 1.033 2.308 1.909 1.575 3.667-.348.849-1.176 1.404-2.094 1.404h-1.581v4c1.471 0 2.973-.281 3.704 1.475.698 1.661-.604 2.596-1.604 3.596l2.829 2.829c1-1 1.943-2.282 3.667-1.575 1.673.687 1.404 2.332 1.404 3.675h4c0-1.244-.276-2.967 1.475-3.704 1.645-.692 2.586.595 3.596 1.604l2.828-2.829c-1-1-2.301-1.933-1.604-3.595l.03-.072c.687-1.673 2.332-1.404 3.675-1.404zm-12 2c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z" />
+        </svg>
+      </button>
+      <button type="button" id="refresh-data" class="controls-button" title="Refresh data"
+        onclick="refreshMacroData()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path
+            d="M17.65 6.35A7.95 7.95 0 0012 4V1L7 6l5 5V7a5 5 0 11-5 5H5a7 7 0 107.75-6.95 7.05 7.05 0 014.9 1.9z" />
         </svg>
       </button>
       <button type="button" id="open-resources" class="controls-button" title="Resources"
@@ -270,6 +277,50 @@
     </div>
   </div>
 
+  <!-- Emergency services request - proof of concept, static only -->
+  <div id="emergency-modal" class="crud-modal-border crud-modal" data-resizable="true">
+    <div class="custom-modal-header bg-primary ui-front" data-draggable="true">
+      <div class="flex justify-between">
+        <h3 id="emergency-modal-title">Emergency Service Request</h3>
+        <div class="cursor-pointer flex align-center" onclick="closeEmergencyModal()">
+          <svg clip-rule="evenodd" fill-rule="evenodd" fill="white" stroke-linejoin="round" stroke-miterlimit="2"
+            width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="m12 10.93 5.719-5.72c.146-.146.339-.219.531-.219.404 0 .75.324.75.749 0 .193-.073.385-.219.532l-5.72 5.719 5.719 5.719c.147.147.22.339.22.531 0 .427-.349.75-.75.75-.192 0-.385-.073-.531-.219l-5.719-5.719-5.719 5.719c-.146.146-.339.219-.531.219-.401 0-.75-.323-.75-.75 0-.192.073-.384.22-.531l5.719-5.719-5.72-5.719c-.146-.147-.219-.339-.219-.532 0-.425.346-.749.75-.749.192 0 .385.073.531.219z" />
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="custom-modal-body">
+      <div id="emergency-form-fields" class="flex flex-col gap-1 wrap">
+        <div class="flex flex-col gap-1/2">
+          <span class="bold">Date</span>
+          <input type="text" id="emergency-date" class="modal-input" readonly>
+        </div>
+        <div class="flex flex-col gap-1/2">
+          <span class="bold">Cause</span>
+          <select id="emergency-cause" class="modal-input">
+            <option value="intrusion">Intrusion</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1/2">
+          <span class="bold">Message (optional)</span>
+          <textarea id="emergency-message" class="modal-input" rows="3" placeholder="Add an optional message..."></textarea>
+        </div>
+        <div class="flex w-100 justify-end gap-1 mt-1">
+          <button id="emergency-delete-button" class="btn btn-danger" type="button">Delete</button>
+          <button id="emergency-submit-button" class="btn btn-primary" type="button">Submit</button>
+        </div>
+      </div>
+      <div id="emergency-confirmation" class="flex flex-col gap-1 wrap" style="display: none;">
+        <span class="emergency-success-message">Request submitted successfully.</span>
+        <div class="flex w-100 justify-end mt-1">
+          <button id="emergency-close-confirmation-button" class="btn btn-primary" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-mask" class="modal-mask"></div>
 
   <div id="MacroPopoverOption" class="popover-options">
@@ -301,6 +352,14 @@
           <li><a id="delete_marker">Delete marker</a></li>
         </ul>
       </li>
+      <li class="dropdown-submenu">
+        <a>Report</a>
+        <ul class="dropdown-menu dropdown-menu-theme">
+          <li><a id="call_guard">Guard</a></li>
+          <li><a id="call_police">Police</a></li>
+          <li><a id="call_firefighters">Fire Department</a></li>
+        </ul>
+      </li>
     </ul>
   </div>
 
@@ -308,7 +367,7 @@
     $LAB
       .script("https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js")
       .script("macro_map/js/macro_map.js")
-      .script("https://unpkg.com/leaflet/dist/leaflet.js")
+      .script("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
       .script("prewikka/js/moment.min.js")
       .wait(function () {
         initializeMap();

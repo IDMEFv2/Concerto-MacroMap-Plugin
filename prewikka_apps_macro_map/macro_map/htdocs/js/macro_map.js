@@ -18,6 +18,7 @@ let mapLayer = null;
 let alertDisplaySize = 11;
 let nameDisplaySize = 11;
 let currentMapLayerKey = "osm";
+let isRefreshInProgress = false;
 let _svgPlansCache = {};
 let isRestoringModalState = false;
 const FLAG_PATH = "macro_map/assets/flags/";
@@ -50,14 +51,14 @@ const DEFAULT_ICON_RULES = [
     ruleType: "percentage",
     metric: "high",
     operator: ">=",
-    value: 70,
+    value: 20,
     color: "#FE0000"
   },
   {
     ruleType: "percentage",
     metric: "medium",
     operator: ">=",
-    value: 50,
+    value: 30,
     color: "#f0ad4e"
   },
   {
@@ -355,6 +356,34 @@ async function initializeMap() {
     navigate_to_table(entity.entity_name, undefined);
   })
 
+  $("#call_guard").on("click", function () {
+    openEmergencyModal("Guard");
+    $("#MacroPopoverOption").hide();
+  });
+
+  $("#call_police").on("click", function () {
+    openEmergencyModal("Police");
+    $("#MacroPopoverOption").hide();
+  });
+
+  $("#call_firefighters").on("click", function () {
+    openEmergencyModal("Firefighters");
+    $("#MacroPopoverOption").hide();
+  });
+
+  $("#emergency-submit-button").off("click").on("click", function () {
+    $("#emergency-form-fields").hide();
+    $("#emergency-confirmation").show();
+  });
+
+  $("#emergency-delete-button").off("click").on("click", function () {
+    closeEmergencyModal();
+  });
+
+  $("#emergency-close-confirmation-button").off("click").on("click", function () {
+    closeEmergencyModal();
+  });
+
   $(document).on("change", "#enable-history-tracking", function () {
     $("#past-positions-input").prop("disabled", !$(this).is(":checked"));
   });
@@ -504,6 +533,7 @@ function buildMicroMapMenuForEntity(entity) {
 
 function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
   if (Array.isArray(alerts)) {
+    obj._lastAlertsSignature = buildAlertsSignature(alerts);
     obj.a_high = 0; obj.a_medium = 0; obj.a_low = 0; obj.a_info = 0;
 
     if (alerts.length > 0) {
@@ -524,22 +554,45 @@ function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
   }
 
   const newIcon = assignIcon(obj.iconType, obj.id, obj.marker_size, obj.nationality);
+  const mainIconSignature = buildMainIconSignature(obj);
+  const badgeIconSignature = buildBadgeIconSignature(obj);
+  const nameIconSignature = buildNameIconSignature(obj);
+  const tooltipSignature = buildTooltipSignature(obj);
 
   if (obj.marker) {
-    obj.marker.setIcon(newIcon);
-    if (obj.badge_marker) obj.badge_marker.setIcon(buildBadgeIcon(obj));
+    if (obj._mainIconSignature !== mainIconSignature) {
+      obj.marker.setIcon(newIcon);
+      obj._mainIconSignature = mainIconSignature;
+    }
 
-    const updatedContent = createEntityTooltipHtml(obj);
-    obj.marker.setTooltipContent(updatedContent);
+    if (obj.badge_marker && obj._badgeIconSignature !== badgeIconSignature) {
+      obj.badge_marker.setIcon(buildBadgeIcon(obj));
+      obj._badgeIconSignature = badgeIconSignature;
+    }
+
+    if (obj.name_marker && obj._nameIconSignature !== nameIconSignature) {
+      obj.name_marker.setIcon(buildNameBadge(obj));
+      obj._nameIconSignature = nameIconSignature;
+    }
+
+    if (obj._tooltipSignature !== tooltipSignature) {
+      const updatedContent = createEntityTooltipHtml(obj);
+      obj.marker.setTooltipContent(updatedContent);
+      obj._tooltipSignature = tooltipSignature;
+    }
   } else {
     obj.marker = L.marker([obj.lat, obj.lng], { icon: newIcon });
     obj.badge_marker = L.marker([obj.lat, obj.lng], { icon: buildBadgeIcon(obj), interactive: true });
     obj.name_marker = L.marker([obj.lat, obj.lng], { icon: buildNameBadge(obj), interactive: false });
+    obj._mainIconSignature = mainIconSignature;
+    obj._badgeIconSignature = badgeIconSignature;
+    obj._nameIconSignature = nameIconSignature;
 
     if (addToMapNow) {
       obj.marker.addTo(map);
-      obj.badge_marker.addTo(map);
-      obj.name_marker.addTo(map);
+      // Secondary markers are mounted only when actually visible.
+      applyBadgeVisibility(obj);
+      applyNameVisibility(obj);
     }
 
     const tooltipHtml = createEntityTooltipHtml(obj);
@@ -549,6 +602,7 @@ function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
       offset: [0, -10],
       className: 'entity-rich-tooltip'
     });
+    obj._tooltipSignature = tooltipSignature;
 
     obj.marker.on('click', function () {
       selectedEntityId = obj.id;
@@ -597,6 +651,139 @@ async function fetchAllAlertsBulk(dates) {
       end_date: dates.end_date
     }
   });
+}
+
+function getEntityAlertsFromBulkData(bulkData, entity) {
+  if (!entity) return [];
+  const normalizedKey = normalizeMacroEntityKey(entity.entity_name);
+  return (bulkData && (bulkData[normalizedKey] || bulkData[entity.entity_name])) || [];
+}
+
+function buildAlertsSignature(alertRows) {
+  if (!Array.isArray(alertRows) || alertRows.length === 0) return "";
+
+  const normalizedRows = alertRows.map(row => {
+    if (Array.isArray(row)) {
+      return row.map(value => value == null ? "" : String(value)).join("||");
+    }
+
+    if (row && typeof row === "object") {
+      return Object.keys(row)
+        .sort()
+        .map(key => `${key}:${row[key] == null ? "" : String(row[key])}`)
+        .join("||");
+    }
+
+    return String(row);
+  });
+
+  normalizedRows.sort();
+  return normalizedRows.join("##");
+}
+
+function buildMainIconSignature(obj) {
+  const fillColor = resolveColorByRules(obj) || "black";
+
+  return [
+    obj.iconType,
+    obj.id,
+    obj.marker_size,
+    obj.nationality,
+    fillColor
+  ].join("|");
+}
+
+function buildBadgeIconSignature(obj) {
+  return [
+    obj.marker_size,
+    obj.display_position,
+    obj.name_position,
+    obj.display_visible,
+    obj.a_high || 0,
+    obj.a_medium || 0,
+    obj.a_low || 0,
+    obj.a_info || 0,
+    alertDisplaySize
+  ].join("|");
+}
+
+function buildNameIconSignature(obj) {
+  return [
+    obj.marker_size,
+    obj.name,
+    obj.display_position,
+    obj.name_position,
+    obj.name_visible,
+    nameDisplaySize
+  ].join("|");
+}
+
+function buildTooltipSignature(obj) {
+  return [
+    obj.name,
+    obj.town,
+    obj.nationality,
+    obj.a_high || 0,
+    obj.a_medium || 0,
+    obj.a_low || 0,
+    obj.a_info || 0,
+    obj.alert_text || ""
+  ].join("|");
+}
+
+function setRefreshButtonState(isLoading) {
+  const $button = $("#refresh-data");
+  if (!$button.length) return;
+
+  $button.prop("disabled", isLoading);
+  $button.attr("title", isLoading ? "Refreshing data..." : "Refresh data");
+}
+
+async function refreshMacroData() {
+  if (isRefreshInProgress) {
+    return;
+  }
+
+  isRefreshInProgress = true;
+  setRefreshButtonState(true);
+
+  try {
+    const dates = await getMacroDates();
+    if (!dates) {
+      return;
+    }
+
+    const response = await fetchAllAlertsBulk(dates);
+    if (!response || response.status !== "success") {
+      return;
+    }
+
+    const bulkData = response.data || {};
+    let changedEntities = 0;
+
+    mapEntities.forEach(entity => {
+      const entityAlerts = getEntityAlertsFromBulkData(bulkData, entity);
+      const nextSignature = buildAlertsSignature(entityAlerts);
+      const currentSignature = entity._lastAlertsSignature || "";
+
+      if (nextSignature === currentSignature) {
+        return;
+      }
+
+      updateEntityDataAndGraphics(entity, entityAlerts, true);
+      changedEntities += 1;
+    });
+
+    if (changedEntities > 0) {
+      updateBadgesVisibility();
+      updateRelatedIconsVisibility();
+    }
+  } catch (err) {
+    console.error("Manual refresh failed", err);
+  } finally {
+    setRefreshButtonState(false);
+    isRefreshInProgress = false;
+  }
 }
 
 function createEntityTooltipHtml(obj) {
@@ -762,26 +949,74 @@ function getNameBadgePosClass(badge_position, name_position) {
 }
 
 function updateBadgesVisibility() {
-  const z = map.getZoom();
+  if (!map) return;
+  const zoom = map.getZoom();
+
   mapEntities.forEach(obj => {
-    const visibleBadge = z >= obj.display_visible;
-    const visibleName = z >= obj.name_visible;
-
-    if (obj.badge_marker) {
-      obj.badge_marker.setOpacity((visibleBadge && allBadgesVisible) ? 1 : 0);
-      obj.badge_marker.setIcon(buildBadgeIcon(obj));
-      if (obj.badge_marker._icon) {
-        obj.badge_marker._icon.style.pointerEvents = visibleBadge ? "auto" : "none";
-      }
-    }
-
-    if (obj.name_marker) {
-      obj.name_marker.setOpacity((visibleName && allNamesVisible) ? 1 : 0);
-      if (obj.name_marker._icon) {
-        obj.name_marker._icon.style.pointerEvents = "none";
-      }
-    }
+    applyBadgeVisibility(obj, zoom);
+    applyNameVisibility(obj, zoom);
   });
+}
+
+function setLayerVisibility(layer, shouldShow) {
+  if (!map || !layer) return;
+
+  const isOnMap = map.hasLayer(layer);
+  if (shouldShow && !isOnMap) {
+    layer.addTo(map);
+  } else if (!shouldShow && isOnMap) {
+    map.removeLayer(layer);
+  }
+}
+
+function applyBadgeVisibility(obj, currentZoom = null) {
+  if (!obj || !obj.badge_marker || !map) return false;
+
+  const zoom = currentZoom == null ? map.getZoom() : currentZoom;
+  const visibleByZoom = zoom >= obj.display_visible;
+  const shouldShow = visibleByZoom && allBadgesVisible;
+  const shouldBeClickable = visibleByZoom;
+
+  if (obj._badgeVisibleState !== shouldShow) {
+    setLayerVisibility(obj.badge_marker, shouldShow);
+    obj._badgeVisibleState = shouldShow;
+  }
+
+  // Rebuild badge HTML only when clickability threshold changes.
+  if (obj._badgeClickableState !== shouldBeClickable) {
+    obj.badge_marker.setIcon(buildBadgeIcon(obj));
+    obj._badgeClickableState = shouldBeClickable;
+  }
+
+  if (shouldShow && obj.badge_marker._icon) {
+    const pointerEvents = shouldShow ? "auto" : "none";
+    if (obj.badge_marker._icon.style.pointerEvents !== pointerEvents) {
+      obj.badge_marker._icon.style.pointerEvents = pointerEvents;
+    }
+  }
+
+  return visibleByZoom;
+}
+
+function applyNameVisibility(obj, currentZoom = null) {
+  if (!obj || !obj.name_marker || !map) return false;
+
+  const zoom = currentZoom == null ? map.getZoom() : currentZoom;
+  const visibleByZoom = zoom >= obj.name_visible;
+  const shouldShow = visibleByZoom && allNamesVisible;
+
+  if (obj._nameVisibleState !== shouldShow) {
+    setLayerVisibility(obj.name_marker, shouldShow);
+    obj._nameVisibleState = shouldShow;
+  }
+
+  if (shouldShow && obj.name_marker._icon) {
+    if (obj.name_marker._icon.style.pointerEvents !== "none") {
+      obj.name_marker._icon.style.pointerEvents = "none";
+    }
+  }
+
+  return visibleByZoom;
 }
 
 function downloadBase64File(filename, contentType, base64Data) {
@@ -966,11 +1201,18 @@ async function renderUploadedAssetsOnMap(assets) {
 }
 
 function clearAllMarkersFromMap(map) {
-  map.eachLayer(function (layer) {
-    if (layer instanceof L.Marker) {
-      map.removeLayer(layer);
-    }
+  if (!map) return;
+
+  mapEntities.forEach(entity => {
+    if (entity.marker && map.hasLayer(entity.marker)) map.removeLayer(entity.marker);
+    if (entity.badge_marker && map.hasLayer(entity.badge_marker)) map.removeLayer(entity.badge_marker);
+    if (entity.name_marker && map.hasLayer(entity.name_marker)) map.removeLayer(entity.name_marker);
+    removeAllRelatedIcons(entity);
   });
+
+  if (window.infrastructureLayerGroup) {
+    window.infrastructureLayerGroup.clearLayers();
+  }
 }
 
 function deleteMarkerFromMap(entity) {
@@ -1164,8 +1406,16 @@ function bindRulesEditor(containerSelector) {
 
 function refreshEntityIcon(entity) {
   if (!entity?.marker) return;
-  const newIcon = assignIcon(entity.iconType, entity.id, entity.marker_size, entity.nationality);
+
+  const newIcon = assignIcon(
+    entity.iconType,
+    entity.id,
+    entity.marker_size,
+    entity.nationality
+  );
+
   entity.marker.setIcon(newIcon);
+  entity._mainIconSignature = buildMainIconSignature(entity);
 }
 
 function addRuleToMarker() {
@@ -1454,7 +1704,7 @@ async function navigate_to_micro_map(assetRef = "", refType = "entity_name", pla
 }
 
 function countAlerts(array, severity) {
-  count = 0;
+  let count = 0;
 
   array.forEach(alert => {
     if (alert[1] == severity) {
@@ -1550,39 +1800,62 @@ function getRelatedIconConfig(relType, overrides = {}) {
 }
 
 function updateRelatedIconsVisibility() {
+  if (!map) return;
   const z = map.getZoom();
-
   mapEntities.forEach(entity => {
-    const rels = entity.related_icons || [];
+    applyRelatedVisibilityForEntity(entity, z);
+  });
+}
 
-    rels.forEach(rel => {
-      if (!rel?.marker) return;
+function applyRelatedVisibilityForEntity(entity, z = null) {
+  if (!entity || !map) return;
+  const zoom = z == null ? map.getZoom() : z;
+  const rels = entity.related_icons || [];
 
-      const cfg = getRelatedIconConfig(rel.relType);
-      let isVisible = cfg && z >= cfg.minZoomVisible;
+  rels.forEach(rel => {
+    if (!rel?.marker) return;
 
-      if (rel.relType === "drone") {
-        if (!showHistory && !rel.isLatest) {
-          isVisible = false;
-        }
+    const cfg = getRelatedIconConfig(rel.relType);
+    let isVisible = cfg && zoom >= cfg.minZoomVisible;
+
+    if (rel.relType === "drone") {
+      if (!showHistory && !rel.isLatest) {
+        isVisible = false;
       }
+    }
 
+    setLayerVisibility(rel.marker, isVisible);
+
+    if (isVisible) {
       const baseOpacity = rel.baseOpacity ?? 1;
-      const finalOpacity = isVisible ? baseOpacity : 0;
-      rel.marker.setOpacity(finalOpacity);
-
-      if (rel.marker._icon) {
-        rel.marker._icon.style.pointerEvents = isVisible ? "auto" : "none";
+      if (rel._lastOpacity !== baseOpacity) {
+        rel.marker.setOpacity(baseOpacity);
+        rel._lastOpacity = baseOpacity;
       }
-    });
+    }
 
-    if (entity._droneLines) {
-      Object.values(entity._droneLines).forEach(line => {
-        const lineVisible = showHistory && z >= RELATED_ICON_DEFAULTS.drone.minZoomVisible;
-        line.setStyle({ opacity: lineVisible ? RELATED_ICON_DEFAULTS.drone.lineOptions.opacity : 0 });
-      });
+    if (isVisible && rel.marker._icon) {
+      const pointerEvents = isVisible ? "auto" : "none";
+      if (rel.marker._icon.style.pointerEvents !== pointerEvents) {
+        rel.marker._icon.style.pointerEvents = pointerEvents;
+      }
     }
   });
+
+  if (entity._droneLines) {
+    Object.values(entity._droneLines).forEach(line => {
+      const lineVisible = showHistory && zoom >= RELATED_ICON_DEFAULTS.drone.minZoomVisible;
+      setLayerVisibility(line, lineVisible);
+
+      if (lineVisible) {
+        const nextOpacity = RELATED_ICON_DEFAULTS.drone.lineOptions.opacity;
+        if (line._lastOpacity !== nextOpacity) {
+          line.setStyle({ opacity: nextOpacity });
+          line._lastOpacity = nextOpacity;
+        }
+      }
+    });
+  }
 }
 
 function syncRelatedIconsFromAlerts(entity, alertRows) {
@@ -1628,7 +1901,14 @@ function syncRelatedIconsFromAlerts(entity, alertRows) {
     }
   });
 
-  updateRelatedIconsVisibility();
+  Object.keys(entity._droneLines).forEach(sourceId => {
+    if (!pathsById[sourceId]) {
+      map.removeLayer(entity._droneLines[sourceId]);
+      delete entity._droneLines[sourceId];
+    }
+  });
+
+  applyRelatedVisibilityForEntity(entity);
 }
 
 function removeAllRelatedIcons(entity) {
@@ -1891,7 +2171,24 @@ function upsertRelatedMarkerForEntity(entity, relType, sourceId, lat, lng, data,
     entity.related_icons.push(rel);
     return rel;
   } else {
+    const wasLatest = existing.isLatest;
     existing.isLatest = data.isLatest;
+
+    // If the "latest" status changed, update the visual appearance of the marker.
+    if (wasLatest !== data.isLatest) {
+      const finalOpacity = data.isLatest ? 1.0 : (cfg.historyOpacity || 0.2);
+      const finalColor = data.isLatest ? cfg.color : (cfg.historyColor || "#888888");
+
+      existing.baseOpacity = finalOpacity;
+
+      const newIcon = assignIconFixedColor(cfg.iconType, cfg.size, finalColor);
+      existing.marker.setIcon(newIcon);
+      existing.marker.setOpacity(finalOpacity);
+
+      if (existing.marker.getElement()) {
+        existing.marker.getElement().style.opacity = finalOpacity;
+      }
+    }
   }
 
   return existing;
@@ -2228,8 +2525,7 @@ async function applyGlobalSettings() {
         const response = await fetchAllAlertsBulk(dates);
         if (response && response.status === "success") {
           mapEntities.forEach(entity => {
-            const entityKey = normalizeMacroEntityKey(entity.entity_name);
-            const entityAlerts = response.data[entityKey] || response.data[entity.entity_name] || [];
+            const entityAlerts = getEntityAlertsFromBulkData(response.data, entity);
             updateEntityDataAndGraphics(entity, entityAlerts, true);
           });
         }
@@ -2240,14 +2536,6 @@ async function applyGlobalSettings() {
   } else if (sizeChanged || visibilityChanged || displaySizeChanged) {
     mapEntities.forEach(e => {
       if (globalSizeEnabled) e.marker_size = globalEntitySize;
-
-      if (e.name_marker) {
-        e.name_marker.setIcon(buildNameBadge(e));
-      }
-
-      if (e.badge_marker) {
-        e.badge_marker.setIcon(buildBadgeIcon(e));
-      }
 
       updateEntityDataAndGraphics(e, null, true);
     });
@@ -2276,6 +2564,29 @@ function closeResourcesModal() {
   $('#resources-modal').css('display', 'none');
   $('#modal-mask').css('display', 'none');
   clearModalSessionState();
+}
+
+// Emergency services request - proof of concept, static only
+
+function openEmergencyModal(serviceLabel) {
+  initializeDraggableModals();
+
+  $("#emergency-modal-title").text("Call " + serviceLabel);
+  $("#emergency-date").val(moment().format("MMMM D, YYYY"));
+  $("#emergency-cause").val("intrusion");
+  $("#emergency-message").val("");
+
+  $("#emergency-form-fields").show();
+  $("#emergency-confirmation").hide();
+
+  $("#emergency-modal").css('display', 'flex');
+  centerModal($("#emergency-modal"));
+  $('#modal-mask').css('display', 'flex');
+}
+
+function closeEmergencyModal() {
+  $('#emergency-modal').css('display', 'none');
+  $('#modal-mask').css('display', 'none');
 }
 
 // ------------

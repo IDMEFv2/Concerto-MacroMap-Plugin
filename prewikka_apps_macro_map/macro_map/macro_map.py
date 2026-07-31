@@ -471,7 +471,7 @@ class macroMapView(view.View):
             "idmefv2.start_time",
             "idmefv2.source.id",
             "idmefv2.source.category",
-            "idmefv2.source.geolocation"
+            "idmefv2.source.geolocation",
         ]
 
         criteria = Criterion()
