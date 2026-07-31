@@ -99,6 +99,7 @@ Clicking a marker opens a context menu with the following options:
 - **Actions > Center map on entity**: Pan the map to centre on the selected entity.
 - **Actions > Center and zoom map on entity**: Pan to the selected entity and apply a focused zoom level.
 - **Actions > Delete marker**: Remove the marker from the map.
+- **Report > Guard / Police / Fire Department**: Opens an Emergency Service Request modal pre-filled with today's date, a cause selector, and an optional message. *(Proof-of-concept only: the form does not submit to any backend — "Submit" just shows a confirmation message.)*
 
 ### 10. Macro/Micro Route Separation And Navigation Contract
 - **Separated route namespaces**: Macro and Micro features now use explicit, non-overlapping route families:
@@ -140,6 +141,7 @@ Access advanced configuration through the settings modal:
 ### 12. Time-based Filtering
 - **Automatic Synchronization**: Alert queries respect the Prewikka global time range selector.
 - **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and drone positions.
+- **Manual Refresh**: A dedicated "Refresh data" button in the map controls re-fetches alert data on demand and updates only the entities whose data actually changed, without redrawing the rest of the map.
 
 ### 13. Multiple Icon Types
 Supports the following infrastructure types with distinct SVG icons:
