@@ -1,3 +1,6 @@
 /prewikka_apps_macro_map.egg-info
 /dist
 /build
+# Python cache
+__pycache__/
+*.py[cod]

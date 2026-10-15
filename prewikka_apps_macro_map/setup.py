@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name="prewikka-apps-macro_map",
-      version="3.1.0",
+      version="3.2.0",
       author="Marco Compagno",
       author_email="marco_compagno@elmisoftware.com",
       url="https://www.prelude-siem.org",
@@ -17,6 +17,7 @@ setup(name="prewikka-apps-macro_map",
       },
       package_data={
           "macro_map": [
+              "*.py",
               "templates/*.mak",
               "sql/*.py",
               "htdocs/css/*.css",
@@ -26,6 +27,8 @@ setup(name="prewikka-apps-macro_map",
               "htdocs/samples/*.md",
               "htdocs/samples/presets/*.csv",
               "htdocs/assets/flags/*.svg",
+              "htdocs/assets/default_icons/*.svg",
+              "htdocs/assets/*.json",
           ],
       },
       

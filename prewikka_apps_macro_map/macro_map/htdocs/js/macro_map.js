@@ -1,3 +1,5 @@
+"use strict";
+
 const SYSTEM_DEFAULT = { center: [47, 10], zoom: 5 };
 let defaultView = { ...SYSTEM_DEFAULT };
 let sessionView = null;
@@ -10,6 +12,9 @@ let past_positions_limit = 10;
 let allBadgesVisible = true;
 let allNamesVisible = true;
 let showHistory = true;
+let allDronesVisible = true;
+let allTargetsVisible = true;
+let showTargetHistory = true;
 let globalSizeEnabled = false;
 let globalEntitySize = 32;
 let selectedCsvFile = null;
@@ -21,12 +26,18 @@ let currentMapLayerKey = "osm";
 let isRefreshInProgress = false;
 let _svgPlansCache = {};
 let isRestoringModalState = false;
+let independentTargets = [];
+let independentTargetLines = {};
+
+
 const FLAG_PATH = "macro_map/assets/flags/";
 const FLAG_STYLE = {
   border: "0.5px solid #333",
   background: "white",
   boxShadow: "1px 1px 3px rgba(0,0,0,0.3)"
 };
+
+
 const MAP_LAYER_CONFIGS = {
   osm: {
     url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -36,58 +47,23 @@ const MAP_LAYER_CONFIGS = {
       noWrap: true,
     }
   },
-  voyager: {
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    options: {
-      attribution: "© OpenStreetMap contributors © CARTO",
-      subdomains: "abcd",
-      maxZoom: 19,
-      noWrap: true,
-    }
-  }
-};
-const DEFAULT_ICON_RULES = [
-  {
-    ruleType: "percentage",
-    metric: "high",
-    operator: ">=",
-    value: 20,
-    color: "#FE0000"
-  },
-  {
-    ruleType: "percentage",
-    metric: "medium",
-    operator: ">=",
-    value: 30,
-    color: "#f0ad4e"
-  },
-  {
-    ruleType: "percentage",
-    metric: "low",
-    operator: ">=",
-    value: 0,
-    color: "#5cb85c"
-  }
-];
-const RELATED_ICON_DEFAULTS = {
-  drone: {
-    iconType: "Drone",
-    color: "#000000",
-    historyColor: "#888888",
-    size: 24,
-    minZoomVisible: 9,
-    historyOpacity: 0.6,
-    lineOptions: {
-      color: "#444444",
-      weight: 3,
-      opacity: 0.8,
-      dashArray: "6, 6"
-    }
-  }
+  // Disabled: CARTO now requires an API key for these tiles (watermarks "API KEY REQUIRED" without one).
+  // Pending decision with the coordinator on a replacement (candidate: Esri World Light Gray Canvas, no key required).
+  // voyager: {
+  //   url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  //   options: {
+  //     attribution: "© OpenStreetMap contributors © CARTO",
+  //     subdomains: "abcd",
+  //     maxZoom: 19,
+  //     noWrap: true,
+  //   }
+  // }
 };
 
+
 async function initializeMap() {
-  dbIcons = getDbIcons();
+  dbIcons = await loadIcons();
+  await loadIconBindings();
 
   const localData = localStorage.getItem('map_last_view');
   if (localData) {
@@ -132,6 +108,10 @@ async function initializeMap() {
   initializeDraggableModals();
   initializeResizableModals();
   await initializePresetButtons();
+
+  $("#view-config-edit-mode").off("change").on("change", function () {
+    $(".map-controls .controls-button").toggle($(this).prop("checked"));
+  }).change();
 
   $("#close-upload-modal").on("click", function () {
     $('#upload-modal').css('display', 'none');
@@ -422,6 +402,7 @@ async function initializeMap() {
   bindModalSessionAutoSave();
 }
 
+
 function openUploadModal(shouldPersistState = true) {
   initializeDraggableModals();
   $("#upload-modal").css('display', 'flex');
@@ -432,85 +413,11 @@ function openUploadModal(shouldPersistState = true) {
   }
 }
 
+
 function fadeIn() {
   $('#wrapper').removeClass('hidden').addClass('visible');
 }
 
-function getDbIcons() {
-  return [
-    {
-      class_name: "Administration",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M1 24h-1v-2h.998l.014-9h3.988v-3h2v3h2v-3h2v3h2v-3h2v3h2v-3h2v3h4v9h1v2h-23zm20-7h-18v5h2v-3c0-.552.448-1 1-1s1 .448 1 1v3h2v-3c0-.552.448-1 1-1s1 .448 1 1v3h2v-3c0-.552.448-1 1-1s1 .448 1 1v3h2v-3c0-.552.448-1 1-1s1 .448 1 1v3h2v-5zm-6-15h-3v1c2.966 0 6.158 1.979 7 6h-14c.547-3.78 3.638-5.827 6-6v-3h4v2z'/></svg>"
-    },
-    {
-      class_name: "Airport",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M22 1h-2v1h4v5l-2 2v13h2v2h-24v-2h2v-9h12v-4l-2-2v-5h4v-1h-2v-1h8v1zm-13 18h-3v4h3v-4zm5 0h-4v4h4v-4zm4 0h-3v4h3v-4zm-2-15h-2v2l1 1h1v-3zm3 0h-2v3h2v-3zm3 0h-2v3h1l1-1v-2z'/></svg>"
-    },
-    {
-      class_name: "Bank",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M11.5 1L2 6v2h19V6m-5 4v7h3v-7M2 22h19v-3H2m8-9v7h3v-7m-9 0v7h3v-7z'/></svg>"
-    },
-    {
-      class_name: "Hospital",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M24 24h-23v-15h4v-3h3v-6h9v6h3v3h4v15zm-15-5v4h3v-4h-3zm4 0v4h3.012v-4h-3.012zm-8 0h-2v2h2v-2zm17 0h-2v2h2v-2zm-11-4h-2v2h2v-2zm5.012 0h-2v2h2v-2zm-11.012 0h-2v2h2v-2zm17 0h-2v2h2v-2zm-11-4h-2v2h2v-2zm5.012 0h-2v2h2v-2zm-11.012 0h-2v2h2v-2zm17 0h-2v2h2v-2zm-11-4h-2v2h2v-2zm5.012 0h-2v2h2v-2zm-3.012-4h-1v-1h-1v3h1v-1h1v1h1v-3h-1v1z'/></svg>"
-    },
-    {
-      class_name: "Industry",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M24 24h-24v-18h5v9l7-6v3.704l-1.828 1.529.642.767 3.367-2.817 3.819-3.183v3.713l-1.816 1.52.641.767 4.602-3.85-.003-.004 2.576-2.146v15zm-18-6h-2v3h2v-3zm10 0h-2v3h2v-3zm-5 0h-2v3h2v-3zm10 0h-2v3h2v-3zm-18-13h-1c.198-2.182 1.785-4 3.5-4 .246 0 .478.059.683.164.316-.687 1.011-1.164 1.817-1.164s1.501.477 1.817 1.164c.205-.105.437-.164.683-.164.828 0 1.5.672 1.5 1.5s-.672 1.5-1.5 1.5c-.246 0-.478-.059-.683-.164-.316.687-1.011 1.164-1.817 1.164-2.345 0-3.722-2.951-5 0z'/></svg>"
-    },
-    {
-      class_name: "Nuclear",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M24 24h-24v-2h1c2.996-4.904 3.945-12.985 4-16h7c.054 2.94 1.005 10.982 4 16h1.742l-.642-1.093c-1.195-2.145-1.948-4.546-2.501-6.924.268-1.659.385-3.106.401-3.983h5c.04 2.205.753 8.236 3 12h1v2zm-18.287-6h2l-1.167 3 4.167-5h-2l1.167-3-4.167 5zm12.924-12.915c.238-.522.759-.885 1.363-.885s1.125.363 1.363.885c.154-.08.328-.125.512-.125.621 0 1.125.511 1.125 1.14 0 .629-.504 1.14-1.125 1.14-.184 0-.358-.045-.512-.125-.238.522-.759.885-1.363.885s-1.125-.363-1.363-.885c-.154.08-.328.125-.512.125-.621 0-1.125-.511-1.125-1.14 0-.629.504-1.14 1.125-1.14.184 0 .358.045.512.125zm-10.637-.085c.198-2.182 1.785-4 3.5-4 .246 0 .478.059.683.164.316-.687 1.011-1.164 1.817-1.164s1.501.477 1.817 1.164c.205-.105.437-.164.683-.164.828 0 1.5.672 1.5 1.5s-.672 1.5-1.5 1.5c-.246 0-.478-.059-.683-.164-.316.687-1.011 1.164-1.817 1.164-2.345 0-3.722-2.951-5 0h-1z'/></svg>"
-    },
-    {
-      class_name: "Port",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M23.25 16.83h-22a1.21 1.21 0 0 0-.92.41a1.25 1.25 0 0 0-.32 1a5.7 5.7 0 0 0 .69 2.13a.25.25 0 0 0 .23.13a2.3 2.3 0 0 1 .45 0c.58.08 1.49-.68 1.83-1.1a2.56 2.56 0 0 1 1.95-.94a2.49 2.49 0 0 1 2.13 1.19a2 2 0 0 0 1.41.82a2.7 2.7 0 0 0 1.81-1a2.5 2.5 0 0 1 4.29.4a1.2 1.2 0 0 0 1 .57a1.78 1.78 0 0 0 1.37-.76a2.51 2.51 0 0 1 2.17-1.25a2.55 2.55 0 0 1 2.13 1.19c.08.1.7.87 1.27.81a2 2 0 0 1 .35 0a.26.26 0 0 0 .22-.13a5.7 5.7 0 0 0 .69-2.72a.75.75 0 0 0-.75-.75m0-15.83a.76.76 0 0 0-.75.75v1.63a.24.24 0 0 1-.12.21a.25.25 0 0 1-.25 0A4.5 4.5 0 0 0 20.25 3A1.23 1.23 0 0 0 19 4.25V6.5a.25.25 0 0 0 .25.25H21a.75.75 0 0 1 0 1.5h-1.75a.25.25 0 0 0-.25.25v6.08a.76.76 0 0 0 .75.75h3.5a.76.76 0 0 0 .75-.75V1.75a.76.76 0 0 0-.75-.75'/><path fill='${fillColor}' d='M22.87 21.94c-1.63.21-2.74-1.5-2.75-1.52a1 1 0 0 0-1.72 0A3.25 3.25 0 0 1 15.73 22a2.74 2.74 0 0 1-2.34-1.44a1 1 0 0 0-1.71-.15a4.26 4.26 0 0 1-3 1.59A3.43 3.43 0 0 1 6 20.42a1 1 0 0 0-1.64-.09S2.8 22.2 1.13 22a1 1 0 1 0-.26 2a5 5 0 0 0 .55 0a5.6 5.6 0 0 0 3.48-1.43a.24.24 0 0 1 .32 0A5.13 5.13 0 0 0 8.65 24a5.7 5.7 0 0 0 3.56-1.32a.25.25 0 0 1 .33 0A4.48 4.48 0 0 0 15.73 24a5.06 5.06 0 0 0 3.38-1.3a.24.24 0 0 1 .33 0a4.54 4.54 0 0 0 3.69 1.26a1 1 0 1 0-.26-2ZM11.52 10.5h5s1 0 1 1v3.33s0 1-1 1h-5s-1 0-1-1V11.5s0-1 1-1m-7.19.26a1 1 0 0 0 .67-.27a1 1 0 0 0 .05-1.41a.9.9 0 0 1-.25-.61a.91.91 0 1 1 1.58.6a1 1 0 1 0 1.5 1.32A2.89 2.89 0 0 0 6.55 5.7V3.85a.25.25 0 0 1 .15-.22a.26.26 0 0 1 .27 0L13 8.82a.8.8 0 0 0 .49.18H17a.74.74 0 0 0 .71-.53a.75.75 0 0 0-.29-.84L6.88.32a1.48 1.48 0 0 0-2.32.94v4.56a2.89 2.89 0 0 0-.95 4.62a1 1 0 0 0 .72.32'/></svg>"
-    },
-    {
-      class_name: "Radar",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='m7.418 3.973l4.848 4.847l.087-.087a1 1 0 0 1 1.414 1.414l-.087.087l4.347 4.348c.572.572.614 1.557-.053 2.15a8.97 8.97 0 0 1-4.807 2.193l.98 1.318A1.1 1.1 0 0 1 13.266 22h-6.58a1.1 1.1 0 0 1-1.017-1.518l1.253-3.051A8.99 8.99 0 0 1 3 10a8.97 8.97 0 0 1 2.269-5.974c.592-.667 1.577-.625 2.15-.053Zm1.277 14.4L8.028 20h3.446l-.819-1.1a9 9 0 0 1-1.96-.526Zm5.413-13.32a3.5 3.5 0 0 1 2.858 2.96a1 1 0 0 1-1.958.393l-.023-.115a1.5 1.5 0 0 0-1.07-1.233l-.155-.035a1 1 0 0 1 .348-1.97M14 2a6 6 0 0 1 6 6a1 1 0 0 1-1.993.117L18 8a4 4 0 0 0-4-4a1 1 0 1 1 0-2'/></svg>"
-    },
-    {
-      class_name: "Telecom",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M15.929 11.517c.848-1.003 1.354-2.25 1.354-3.601s-.506-2.598-1.354-3.601l1.57-1.439c1.257 1.375 2.022 3.124 2.022 5.04s-.766 3.664-2.022 5.041l-1.57-1.44zm-10.992-10.076l-1.572-1.441c-2.086 2.113-3.365 4.876-3.365 7.916s1.279 5.802 3.364 7.916l1.572-1.441c-1.672-1.747-2.697-4.001-2.697-6.475s1.026-4.728 2.698-6.475zm1.564 11.515l1.57-1.439c-.848-1.003-1.354-2.25-1.354-3.601s.506-2.598 1.354-3.601l-1.57-1.439c-1.257 1.375-2.022 3.124-2.022 5.04s.765 3.664 2.022 5.04zm14.134-12.956l-1.571 1.441c1.672 1.747 2.697 4.001 2.697 6.475s-1.025 4.728-2.697 6.475l1.572 1.441c2.085-2.115 3.364-4.877 3.364-7.916s-1.279-5.803-3.365-7.916zm-2.552 24h-2.154c-.85-2.203-2.261-3.066-3.929-3.066-1.692 0-3.088.886-3.929 3.066h-2.113l5.042-13.268c-1.162-.414-2-1.512-2-2.816 0-1.657 1.344-3 3-3s3 1.343 3 3c0 1.304-.838 2.403-2 2.816l5.083 13.268zm-6.083-10.214l-.852 2.214h1.703l-.851-2.214zm2.006 5.214l-.385-1h-3.242l-.385 1h4.012z'/></svg>"
-    },
-    {
-      class_name: "Water",
-      html: "<svg viewBox='0 0 24 24' width='100%' height='100%' preserveAspectRatio='xMidYMid meet' stroke='black' stroke-width='0.5' xmlns='http://www.w3.org/2000/svg' fill-rule='evenodd' clip-rule='evenodd'><path fill='${fillColor}' d='M19 14.5s2 2.17 2 3.5a2 2 0 0 1-2 2a2 2 0 0 1-2-2c0-1.33 2-3.5 2-3.5M5 18V9a2 2 0 0 1-2-2a2 2 0 0 1 2-2V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h8a2 2 0 0 1 2 2v4a1 1 0 0 1 1 1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1a1 1 0 0 1 1-1V9h-6v9h1a2 2 0 0 1 2 2v2H2v-2a2 2 0 0 1 2-2z'/></svg>"
-    },
-    {
-      class_name: "Drone",
-      html: "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' viewBox='0 0 512 512' preserveAspectRatio='xMidYMid meet'><path fill='${fillColor}' stroke='black' stroke-width='0.5' vector-effect='non-scaling-stroke' stroke-linejoin='round' stroke-linecap='round' d='M469.333,85.675V42.667h21.333c11.797,0,21.333-9.557,21.333-21.333S502.464,0,490.667,0h-85.333 C393.536,0,384,9.557,384,21.333s9.536,21.333,21.333,21.333h21.333v43.008C402.88,87.381,384,107.093,384,131.307v27.968 l-20.907,14.037v-23.979c0-11.776-9.557-21.333-21.333-21.333H171.093c-11.797,0-21.333,9.557-21.333,21.333v24.299L128,159.211 v-27.904c0-24.213-18.88-43.925-42.667-45.632V42.667h21.333c11.797,0,21.333-9.557,21.333-21.333S118.464,0,106.667,0H21.333 C9.536,0,0,9.557,0,21.333s9.536,21.333,21.333,21.333h21.333v43.008C18.88,87.381,0,107.093,0,131.307v142.72 C0,299.371,20.629,320,45.952,320h36.096C107.371,320,128,299.371,128,274.027v-63.659l21.76,14.421v52.544 c0,0.277,0.128,0.491,0.149,0.768c-3.2,2.667-6.507,5.12-9.387,8.277c-39.701,43.392-33.621,117.696-33.365,120.832 c0.981,11.093,10.304,19.456,21.248,19.456c0.619,0,1.259-0.021,1.877-0.085c11.755-1.045,20.416-11.392,19.392-23.125 c-0.043-0.597-4.416-59.051,22.315-88.256c10.176-11.136,23.851-16.533,41.771-16.533h21.227l-0.213,42.667H192 c-11.797,0-21.333,9.557-21.333,21.333v128c0,11.776,9.536,21.333,21.333,21.333h128c11.797,0,21.333-9.557,21.333-21.333v-128 c0-11.776-9.536-21.333-21.333-21.333h-42.56l0.213-42.667h21.44c17.856,0,31.509,5.376,41.685,16.448 c22.4,24.405,23.765,72,22.379,88.341c-1.024,11.733,7.659,22.08,19.392,23.125c0.619,0.064,1.259,0.085,1.899,0.085 c10.923,0,20.245-8.363,21.227-19.456c0.256-3.136,6.336-77.44-33.365-120.832c-2.88-3.157-6.187-5.611-9.387-8.277 c0.021-0.277,0.171-0.491,0.171-0.768v-52.608L384,210.688v63.339C384,299.371,404.629,320,429.952,320h36.096 C491.371,320,512,299.371,512,274.027v-142.72C512,107.093,493.12,87.381,469.333,85.675z M256,448 c-11.776,0-21.333-9.557-21.333-21.333s9.557-21.333,21.333-21.333s21.333,9.557,21.333,21.333S267.776,448,256,448z'/></svg>"
-    }
-  ]
-}
-
-async function fetchAllSvgPlansBulk() {
-  const assetRefs = mapEntities
-    .map(e => e.entity_name ? String(e.entity_name).trim() : "")
-    .filter(Boolean);
-  if (!assetRefs.length) {
-    _svgPlansCache = {};
-    return;
-  }
-  try {
-    const result = await $.ajax({
-      url: "/micro_map/get_micro_plans_list_bulk",
-      type: "POST",
-      data: { asset_refs: JSON.stringify(assetRefs) },
-      dataType: "json"
-    });
-    if (result && typeof result === "object") {
-      _svgPlansCache = result;
-    } else {
-      console.warn("[fetchAllSvgPlansBulk] backend returned non-object result, clearing cache");
-      _svgPlansCache = {};
-    }
-  } catch (e) {
-    console.error("[fetchAllSvgPlansBulk] bulk fetch failed:", e);
-    _svgPlansCache = {};
-  }
-}
 
 function buildMicroMapMenuForEntity(entity) {
   const assetRef = entity && entity.entity_name ? String(entity.entity_name).trim() : "";
@@ -530,6 +437,7 @@ function buildMicroMapMenuForEntity(entity) {
     return [{ label: "Open Micro Map", planName: "", action: () => window.navigate_to_micro_map(assetRef, "entity_name", "") }];
   }
 }
+
 
 function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
   if (Array.isArray(alerts)) {
@@ -632,26 +540,6 @@ function updateEntityDataAndGraphics(obj, alerts, addToMapNow = true) {
   }
 }
 
-async function fetchAllAlertsBulk(dates) {
-  const entityNames = mapEntities
-    .map(e => normalizeMacroEntityKey(e.entity_name))
-    .filter(Boolean);
-
-  if (!entityNames.length) {
-    return { status: "success", data: {} };
-  }
-
-  return $.ajax({
-    url: "/macro_map/get_macro_alerts_bulk",
-    type: "POST",
-    dataType: "json",
-    data: {
-      entities: JSON.stringify(entityNames),
-      start_date: dates.start_date,
-      end_date: dates.end_date
-    }
-  });
-}
 
 function getEntityAlertsFromBulkData(bulkData, entity) {
   if (!entity) return [];
@@ -659,77 +547,6 @@ function getEntityAlertsFromBulkData(bulkData, entity) {
   return (bulkData && (bulkData[normalizedKey] || bulkData[entity.entity_name])) || [];
 }
 
-function buildAlertsSignature(alertRows) {
-  if (!Array.isArray(alertRows) || alertRows.length === 0) return "";
-
-  const normalizedRows = alertRows.map(row => {
-    if (Array.isArray(row)) {
-      return row.map(value => value == null ? "" : String(value)).join("||");
-    }
-
-    if (row && typeof row === "object") {
-      return Object.keys(row)
-        .sort()
-        .map(key => `${key}:${row[key] == null ? "" : String(row[key])}`)
-        .join("||");
-    }
-
-    return String(row);
-  });
-
-  normalizedRows.sort();
-  return normalizedRows.join("##");
-}
-
-function buildMainIconSignature(obj) {
-  const fillColor = resolveColorByRules(obj) || "black";
-
-  return [
-    obj.iconType,
-    obj.id,
-    obj.marker_size,
-    obj.nationality,
-    fillColor
-  ].join("|");
-}
-
-function buildBadgeIconSignature(obj) {
-  return [
-    obj.marker_size,
-    obj.display_position,
-    obj.name_position,
-    obj.display_visible,
-    obj.a_high || 0,
-    obj.a_medium || 0,
-    obj.a_low || 0,
-    obj.a_info || 0,
-    alertDisplaySize
-  ].join("|");
-}
-
-function buildNameIconSignature(obj) {
-  return [
-    obj.marker_size,
-    obj.name,
-    obj.display_position,
-    obj.name_position,
-    obj.name_visible,
-    nameDisplaySize
-  ].join("|");
-}
-
-function buildTooltipSignature(obj) {
-  return [
-    obj.name,
-    obj.town,
-    obj.nationality,
-    obj.a_high || 0,
-    obj.a_medium || 0,
-    obj.a_low || 0,
-    obj.a_info || 0,
-    obj.alert_text || ""
-  ].join("|");
-}
 
 function setRefreshButtonState(isLoading) {
   const $button = $("#refresh-data");
@@ -738,6 +555,7 @@ function setRefreshButtonState(isLoading) {
   $button.prop("disabled", isLoading);
   $button.attr("title", isLoading ? "Refreshing data..." : "Refresh data");
 }
+
 
 async function refreshMacroData() {
   if (isRefreshInProgress) {
@@ -778,6 +596,11 @@ async function refreshMacroData() {
       updateBadgesVisibility();
       updateRelatedIconsVisibility();
     }
+
+    const independentTargetsResponse = await fetchIndependentTargetsBulk(dates);
+    if (independentTargetsResponse && independentTargetsResponse.status === "success") {
+      syncIndependentTargets(independentTargetsResponse.data || []);
+    }
   } catch (err) {
     console.error("Manual refresh failed", err);
   } finally {
@@ -785,6 +608,7 @@ async function refreshMacroData() {
     isRefreshInProgress = false;
   }
 }
+
 
 function createEntityTooltipHtml(obj) {
   let nameDiv = `<div style="font-weight: bold; font-size: 13px;">
@@ -812,9 +636,6 @@ function createEntityTooltipHtml(obj) {
   `;
 }
 
-function normalizeMacroEntityKey(value) {
-  return (value ?? "").toString().trim();
-}
 
 function assignIcon(iconType, id, size, flagCode = null) {
   const finalSize = Number(size) || 32;
@@ -825,8 +646,8 @@ function assignIcon(iconType, id, size, flagCode = null) {
 
   // Main icon (Asset)
   let mainIconHtml = found_icon ?
-    found_icon.html.replace(/\$\{fillColor\}/g, fillColor) :
-    `<div style="width:100%; height:100%; background:${fillColor}; border:1px solid #000;"></div>`;
+    `<div class="icon-colour icon-outlined" style="color:${fillColor}; fill:${fillColor};">${found_icon.html}</div>` :
+    `<div class="icon-colour icon-outlined" style="color:${fillColor}; fill:${fillColor};">${MISSING_ICON_HTML}</div>`;
 
   // Sanitize flag code
   const sanitizedFlag = flagCode ? flagCode.trim().toLowerCase() : null;
@@ -865,6 +686,7 @@ function assignIcon(iconType, id, size, flagCode = null) {
   });
 }
 
+
 function buildBadgeIcon(obj) {
   return L.divIcon({
     className: "badge-icon",
@@ -873,6 +695,7 @@ function buildBadgeIcon(obj) {
   });
 }
 
+
 function buildNameBadge(obj) {
   return L.divIcon({
     className: "name-icon",
@@ -880,6 +703,7 @@ function buildNameBadge(obj) {
     iconSize: null
   });
 }
+
 
 function createBadgeHtml(obj) {
   const posClass = getBadgePosClass(obj.display_position, obj.name_position);
@@ -903,6 +727,7 @@ function createBadgeHtml(obj) {
   `;
 }
 
+
 function createNameBadgeHtml(obj) {
   const posClass = getNameBadgePosClass(obj.display_position, obj.name_position);
 
@@ -916,37 +741,6 @@ function createNameBadgeHtml(obj) {
   `;
 }
 
-function getBadgePosClass(badge_position) {
-  switch (badge_position) {
-    case "Up": return "badge-pos-up";
-    case "Down": return "badge-pos-down";
-    case "Left": return "badge-pos-left";
-    case "Right":
-    default: return "badge-pos-right";
-  }
-}
-
-function getNameBadgePosClass(badge_position, name_position) {
-  let result = "";
-
-  switch (name_position) {
-    case "Up": result = "badge-pos-up"; break;
-    case "Down": result = "badge-pos-down"; break;
-    case "Left": result = "badge-pos-left"; break;
-    case "Right":
-    default: result = "badge-pos-right"; break;
-  }
-
-  if (name_position == badge_position) {
-    if (badge_position == "Right") {
-      result = "badge-pos-up";
-    } else {
-      result = "badge-pos-right";
-    }
-  }
-
-  return result;
-}
 
 function updateBadgesVisibility() {
   if (!map) return;
@@ -958,6 +752,7 @@ function updateBadgesVisibility() {
   });
 }
 
+
 function setLayerVisibility(layer, shouldShow) {
   if (!map || !layer) return;
 
@@ -968,6 +763,7 @@ function setLayerVisibility(layer, shouldShow) {
     map.removeLayer(layer);
   }
 }
+
 
 function applyBadgeVisibility(obj, currentZoom = null) {
   if (!obj || !obj.badge_marker || !map) return false;
@@ -998,6 +794,7 @@ function applyBadgeVisibility(obj, currentZoom = null) {
   return visibleByZoom;
 }
 
+
 function applyNameVisibility(obj, currentZoom = null) {
   if (!obj || !obj.name_marker || !map) return false;
 
@@ -1019,6 +816,7 @@ function applyNameVisibility(obj, currentZoom = null) {
   return visibleByZoom;
 }
 
+
 function downloadBase64File(filename, contentType, base64Data) {
   const binary = atob(base64Data);
   const len = binary.length;
@@ -1029,6 +827,7 @@ function downloadBase64File(filename, contentType, base64Data) {
 
   saveAs(blob, filename || "download");
 }
+
 
 async function initializePresetButtons() {
   const container = $("#presets-div");
@@ -1074,6 +873,7 @@ async function initializePresetButtons() {
   }
 }
 
+
 async function loadPresetAndSubmit(filename) {
   if (!filename) return;
 
@@ -1101,6 +901,7 @@ async function loadPresetAndSubmit(filename) {
     console.error("Failed to load preset");
   }
 }
+
 
 async function submitCsvContentToMap(csvText) {
   if (!csvText) {
@@ -1130,6 +931,7 @@ async function submitCsvContentToMap(csvText) {
     console.error("Upload failed (server error)");
   }
 }
+
 
 async function renderUploadedAssetsOnMap(assets) {
   clearAllMarkersFromMap(map);
@@ -1183,6 +985,15 @@ async function renderUploadedAssetsOnMap(assets) {
     await fetchAllSvgPlansBulk();
   }
 
+  try {
+    const independentTargetsResponse = await fetchIndependentTargetsBulk(dates);
+    if (independentTargetsResponse && independentTargetsResponse.status === "success") {
+      syncIndependentTargets(independentTargetsResponse.data || []);
+    }
+  } catch (e) {
+    console.error("Independent targets fetch failed", e);
+  }
+
   drawInfrastructureLinks();
   updateBadgesVisibility();
   updateRelatedIconsVisibility();
@@ -1200,6 +1011,7 @@ async function renderUploadedAssetsOnMap(assets) {
   }
 }
 
+
 function clearAllMarkersFromMap(map) {
   if (!map) return;
 
@@ -1215,6 +1027,7 @@ function clearAllMarkersFromMap(map) {
   }
 }
 
+
 function deleteMarkerFromMap(entity) {
   if (!entity) return;
   if (entity.marker) map.removeLayer(entity.marker);
@@ -1228,6 +1041,8 @@ function deleteMarkerFromMap(entity) {
 }
 
 // Functions to render the rules grid
+
+
 function openRulesModal(entity, shouldPersistState = true) {
   initializeDraggableModals();
   $("#rules-modal").css("display", "flex");
@@ -1242,6 +1057,7 @@ function openRulesModal(entity, shouldPersistState = true) {
     saveModalSessionState('rules-modal', entity.id);
   }
 }
+
 
 function renderRulesGrid(containerEl, entity) {
   const rules = entity.rules || [];
@@ -1259,6 +1075,7 @@ function renderRulesGrid(containerEl, entity) {
 
   containerEl.dataset.entityId = entity.id;
 }
+
 
 function renderRuleContentCell(rule) {
   const ruleId = rule.ruleId;
@@ -1352,6 +1169,7 @@ function renderRuleContentCell(rule) {
   `;
 }
 
+
 function bindRulesEditor(containerSelector) {
   const containerEl = document.querySelector(containerSelector);
   if (!containerEl) return;
@@ -1404,6 +1222,7 @@ function bindRulesEditor(containerSelector) {
   });
 }
 
+
 function refreshEntityIcon(entity) {
   if (!entity?.marker) return;
 
@@ -1417,6 +1236,7 @@ function refreshEntityIcon(entity) {
   entity.marker.setIcon(newIcon);
   entity._mainIconSignature = buildMainIconSignature(entity);
 }
+
 
 function addRuleToMarker() {
   const id = selectedEntityId ?? Number($("#MacroPopoverOption").attr("data-selected-entity-id"));
@@ -1466,136 +1286,7 @@ function addRuleToMarker() {
 }
 
 // Functions to control the icon's color
-function getColor(id) {
-  const entity = mapEntities.find(e => e.id == id);
-  if (!entity) return "black";
 
-  const color = resolveColorByRules(entity);
-  return color || "black";
-}
-
-function resolveColorByRules(entity) {
-  const rules = entity?.rules || [];
-  const ctx = {};
-
-  for (const rule of rules) {
-    const res = evaluateRule(rule, entity, ctx);
-    if (res && res.matched) {
-      return res.color || null;
-    }
-  }
-
-  return null;
-}
-
-function evaluateRule(rule, entity, ctx) {
-  if (!rule || !rule.ruleType) {
-    return { matched: false };
-  }
-
-  switch (rule.ruleType) {
-    case "percentage":
-      return evaluatePercentageRule(rule, entity, ctx);
-
-    case "regex":
-      return evaluateRegexRule(rule, entity, ctx);
-
-    default:
-      console.warn("Unknown ruleType:", rule.ruleType, rule);
-      return { matched: false };
-  }
-}
-
-function evaluatePercentageRule(rule, entity, ctx) {
-  if (!ctx.perc) {
-    ctx.perc = computePerc(entity);
-  }
-
-  const metric = (rule.metric || "").toLowerCase();
-  const p = ctx.perc[metric];
-
-  if (typeof p !== "number") {
-    return { matched: false };
-  }
-
-  const op = rule.operator;
-  const threshold = Number(rule.value);
-
-  if (!Number.isFinite(threshold)) {
-    console.warn("Invalid percentage rule value:", rule);
-    return { matched: false };
-  }
-
-  let ok = false;
-  switch (op) {
-    case ">=": ok = p >= threshold; break;
-    case ">": ok = p > threshold; break;
-    case "<=": ok = p <= threshold; break;
-    case "<": ok = p < threshold; break;
-    case "==": ok = p === threshold; break;
-    default:
-      console.warn("Invalid operator in percentage rule:", rule);
-      ok = false;
-      break;
-  }
-
-  if (!ok) return { matched: false };
-
-  return { matched: true, color: rule.color };
-}
-
-function evaluateRegexRule(rule, entity, ctx) {
-  const patternRaw = (rule.pattern ?? "").toString().trim();
-  if (!patternRaw) return { matched: false };
-
-  const haystack = (entity.alert_text ?? "").toString();
-  if (!haystack) return { matched: false };
-
-  let re = null;
-  try {
-    re = new RegExp(patternRaw, "i");
-  } catch (e) {
-    re = compileContainsRegex(patternRaw);
-  }
-
-  if (!re) return { matched: false };
-  if (!re.test(haystack)) return { matched: false };
-
-  return { matched: true, color: rule.color };
-}
-
-function escapeRegexLiteral(text) {
-  return (text ?? "").toString().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function compileContainsRegex(userText, matchWholeWord = false) {
-  const raw = (userText ?? "").toString().trim();
-  if (!raw) return null;
-
-  const safe = escapeRegexLiteral(raw);
-
-  const pattern = matchWholeWord ? `\\b${safe}\\b` : safe;
-  return new RegExp(pattern, "i");
-}
-
-function computePerc(entity) {
-  const a_high = Number(entity.a_high || 0);
-  const a_medium = Number(entity.a_medium || 0);
-  const a_low = Number(entity.a_low || 0);
-
-  const sum = a_high + a_medium + a_low;
-
-  if (sum <= 0) {
-    return { sum: 0, high: 0, medium: 0, low: 0 };
-  }
-
-  return {
-    sum,
-    high: (a_high / sum) * 100,
-    medium: (a_medium / sum) * 100,
-    low: (a_low / sum) * 100
-  };
-}
 
 function show_popover(node) {
   var popover = $("#MacroPopoverOption .popover");
@@ -1639,573 +1330,7 @@ function show_popover(node) {
 }
 
 // Functions to obtain the date and convert the format
-async function getMacroDates() {
-  var dates = await getMacroTime();
 
-  if (!dates.start_date || !dates.end_date) {
-    return null;
-  }
-
-  const startDate = convertMacroToISO(dates.start_date);
-  const endDate = convertMacroToISO(dates.end_date);
-
-  return {
-    start_date: startDate,
-    end_date: endDate
-  };
-}
-
-async function getMacroTime() {
-  var time = await $.ajax({
-    url: "/macro_map/get_macro_time",
-    type: "GET"
-  });
-
-  return time;
-}
-
-function convertMacroToISO(dateStr) {
-  var dt = moment.utc(dateStr, "YYYY-MM-DD HH:mm:ssZ");
-  return dt.format("YYYY-MM-DD HH:mm:ss.SSSSSS+00:00");
-}
-// -------
-
-async function navigate_to_table(entityName, alertType) {
-  if (entityName || alertType) {
-    const body = {
-      entity_name: entityName,
-      alert_type: alertType
-    };
-
-    await $.ajax({
-      url: "/macro_map/navigate_to_table",
-      type: "POST",
-      data: body,
-      contentType: "application/json"
-    });
-  }
-}
-
-async function navigate_to_micro_map(assetRef = "", refType = "entity_name", planName = "") {
-  const safeAssetRef = String(assetRef || "").trim();
-  const safeRefType = String(refType || "entity_name").trim() || "entity_name";
-  const safePlanName = String(planName || "").trim();
-
-  await $.ajax({
-    url: "/macro_map/navigate_to_micro_map",
-    type: "POST",
-    data: {
-      asset_ref: safeAssetRef,
-      ref_type: safeRefType,
-      source: "macro_map",
-      svg_name: safePlanName
-    }
-  });
-}
-
-function countAlerts(array, severity) {
-  let count = 0;
-
-  array.forEach(alert => {
-    if (alert[1] == severity) {
-      count++;
-    }
-  })
-  return count;
-}
-
-function createDefaultRules() {
-  return structuredClone(DEFAULT_ICON_RULES).map(r => ({
-    ...r,
-    ruleId: generateId()
-  }));
-}
-
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
-
-function buildAlertDescriptionCache(rows) {
-  const descriptions = [];
-
-  (rows || []).forEach(r => {
-    const desc = (r && r.length >= 4) ? r[3] : null;
-    if (desc != null) {
-      const s = desc.toString().trim();
-      if (s) descriptions.push(s);
-    }
-  });
-
-  return {
-    alert_descriptions: descriptions,
-    alert_text: descriptions.join(" \n ")
-  };
-}
-
-// Functions to manage related icons
-function addRelatedMarkerForEntity(entity, relType, lat, lng, options = {}) {
-  if (!entity) return null;
-  if (!Array.isArray(entity.related_icons)) entity.related_icons = [];
-
-  if (hasRelatedAt(entity, relType, lat, lng)) return null;
-
-  const cfg = getRelatedIconConfig(relType, options);
-  if (!cfg) return null;
-
-  const icon = assignIconFixedColor(cfg.iconType, cfg.size, cfg.color);
-
-  const marker = L.marker([lat, lng], {
-    icon,
-    interactive: false
-  }).addTo(map);
-
-  marker.setOpacity(map.getZoom() >= cfg.minZoomVisible ? 1 : 0);
-
-  const rel = {
-    relId: generateId(),
-    relType,
-    lat,
-    lng,
-    marker
-  };
-
-  entity.related_icons.push(rel);
-  return rel;
-}
-
-function getRelatedIconConfig(relType, overrides = {}) {
-  const t = (relType || "").toLowerCase();
-
-  switch (t) {
-    case "drone": {
-      const base = RELATED_ICON_DEFAULTS.drone;
-      return {
-        iconType: base.iconType,
-        color: base.color,
-        historyColor: base.historyColor,
-        size: base.size,
-        minZoomVisible: base.minZoomVisible,
-        historyOpacity: base.historyOpacity,
-        ...overrides
-      };
-    }
-    default:
-      console.warn("Unknown related icon type:", relType);
-      return null;
-  }
-}
-
-function updateRelatedIconsVisibility() {
-  if (!map) return;
-  const z = map.getZoom();
-  mapEntities.forEach(entity => {
-    applyRelatedVisibilityForEntity(entity, z);
-  });
-}
-
-function applyRelatedVisibilityForEntity(entity, z = null) {
-  if (!entity || !map) return;
-  const zoom = z == null ? map.getZoom() : z;
-  const rels = entity.related_icons || [];
-
-  rels.forEach(rel => {
-    if (!rel?.marker) return;
-
-    const cfg = getRelatedIconConfig(rel.relType);
-    let isVisible = cfg && zoom >= cfg.minZoomVisible;
-
-    if (rel.relType === "drone") {
-      if (!showHistory && !rel.isLatest) {
-        isVisible = false;
-      }
-    }
-
-    setLayerVisibility(rel.marker, isVisible);
-
-    if (isVisible) {
-      const baseOpacity = rel.baseOpacity ?? 1;
-      if (rel._lastOpacity !== baseOpacity) {
-        rel.marker.setOpacity(baseOpacity);
-        rel._lastOpacity = baseOpacity;
-      }
-    }
-
-    if (isVisible && rel.marker._icon) {
-      const pointerEvents = isVisible ? "auto" : "none";
-      if (rel.marker._icon.style.pointerEvents !== pointerEvents) {
-        rel.marker._icon.style.pointerEvents = pointerEvents;
-      }
-    }
-  });
-
-  if (entity._droneLines) {
-    Object.values(entity._droneLines).forEach(line => {
-      const lineVisible = showHistory && zoom >= RELATED_ICON_DEFAULTS.drone.minZoomVisible;
-      setLayerVisibility(line, lineVisible);
-
-      if (lineVisible) {
-        const nextOpacity = RELATED_ICON_DEFAULTS.drone.lineOptions.opacity;
-        if (line._lastOpacity !== nextOpacity) {
-          line.setStyle({ opacity: nextOpacity });
-          line._lastOpacity = nextOpacity;
-        }
-      }
-    });
-  }
-}
-
-function syncRelatedIconsFromAlerts(entity, alertRows) {
-  if (!entity) return;
-  if (!entity._droneLines) entity._droneLines = {};
-
-  const allDronesData = extractLatestDronesFromAlerts(alertRows);
-
-  const currentKeys = new Set(allDronesData.map(d => `${d.sourceId}_${d.timeMs}`));
-
-  entity.related_icons = entity.related_icons.filter(rel => {
-    if (rel.relType === "drone") {
-      if (!currentKeys.has(rel.relKey)) {
-        if (rel.marker) map.removeLayer(rel.marker);
-        return false;
-      }
-    }
-    return true;
-  });
-
-  const pathsById = {};
-
-  allDronesData.forEach(d => {
-    upsertRelatedMarkerForEntity(entity, "drone", d.sourceId, d.lat, d.lng, d);
-
-    if (!pathsById[d.sourceId]) pathsById[d.sourceId] = [];
-    pathsById[d.sourceId].push([d.lat, d.lng]);
-  });
-
-  Object.keys(pathsById).forEach(sourceId => {
-    const coordinates = pathsById[sourceId];
-    if (coordinates.length >= 2) {
-      const lineStyle = RELATED_ICON_DEFAULTS.drone.lineOptions;
-      if (!entity._droneLines[sourceId]) {
-        entity._droneLines[sourceId] = L.polyline(coordinates, lineStyle).addTo(map);
-      } else {
-        entity._droneLines[sourceId].setLatLngs(coordinates);
-        entity._droneLines[sourceId].setStyle(lineStyle);
-      }
-    } else if (entity._droneLines[sourceId]) {
-      map.removeLayer(entity._droneLines[sourceId]);
-      delete entity._droneLines[sourceId];
-    }
-  });
-
-  Object.keys(entity._droneLines).forEach(sourceId => {
-    if (!pathsById[sourceId]) {
-      map.removeLayer(entity._droneLines[sourceId]);
-      delete entity._droneLines[sourceId];
-    }
-  });
-
-  applyRelatedVisibilityForEntity(entity);
-}
-
-function removeAllRelatedIcons(entity) {
-  if (!entity) return;
-
-  if (Array.isArray(entity.related_icons)) {
-    entity.related_icons.forEach(rel => {
-      if (rel?.marker) map.removeLayer(rel.marker);
-    });
-    entity.related_icons = [];
-  }
-
-  if (entity._droneLines) {
-    Object.values(entity._droneLines).forEach(line => {
-      map.removeLayer(line);
-    });
-    entity._droneLines = {};
-  }
-}
-
-function hasRelatedAt(entity, relType, lat, lng, eps = 1e-6) {
-  const arr = entity.related_icons || [];
-  return arr.some(x =>
-    (x.relType || "").toLowerCase() === (relType || "").toLowerCase() &&
-    Math.abs(x.lat - lat) <= eps &&
-    Math.abs(x.lng - lng) <= eps
-  );
-}
-
-function assignIconFixedColor(iconType, size, fillColor) {
-  const found = dbIcons.find(x => x.class_name === iconType);
-  const finalSize = Number(size) || 22;
-
-  if (found) {
-    let processedHtml = found.html
-      .replace(/\$\{fillColor\}/g, fillColor)
-      .replace(/stroke='black'/g, `stroke='${fillColor}'`);
-
-    return L.divIcon({
-      className: `map-icon ${iconType}-fixed`,
-      html: processedHtml,
-      iconSize: [finalSize, finalSize],
-      iconAnchor: [finalSize / 2, finalSize / 2],
-    });
-  }
-
-  return L.divIcon({
-    className: "map-icon fallback",
-    html: `<div style="width:100%; height:100%; border-radius:50%; background:${fillColor}; border:1px solid #333"></div>`,
-    iconSize: [finalSize, finalSize],
-    iconAnchor: [finalSize / 2, finalSize / 2],
-  });
-}
-
-function extractLatestDronesFromAlerts(rows) {
-  const dronesGrouped = {};
-
-  (rows || []).forEach(r => {
-    if (!r || r.length < 8) return;
-
-    const startTime = r[4];
-    const sourceIdRaw = r[5];
-    const category = r[6];
-    const geo = r[7];
-
-    if (!sourceIdRaw || !categoryHasDrone(category)) return;
-
-    const pt = parseGeoPoint(geo);
-    const timeMs = parseTimeMs(startTime);
-    if (!pt || timeMs == null) return;
-
-    const ids = Array.isArray(parseArrayish(sourceIdRaw)) ? parseArrayish(sourceIdRaw) : [sourceIdRaw];
-
-    ids.forEach(sourceId => {
-      const key = String(sourceId);
-      if (!dronesGrouped[key]) dronesGrouped[key] = [];
-      dronesGrouped[key].push({
-        sourceId: key,
-        lat: pt.lat,
-        lng: pt.lng,
-        timeMs,
-        start_time: startTime
-      });
-    });
-  });
-
-  const allDrones = [];
-  Object.keys(dronesGrouped).forEach(vid => {
-    let history = dronesGrouped[vid].sort((a, b) => a.timeMs - b.timeMs);
-
-    const totalToKeep = past_positions_limit + 1;
-
-    if (history.length > totalToKeep) {
-      history = history.slice(-totalToKeep);
-    }
-
-    history.forEach((data, index) => {
-      data.isLatest = (index === history.length - 1);
-      allDrones.push(data);
-    });
-  });
-
-  return allDrones;
-}
-
-function categoryHasDrone(categoryValue) {
-  const cat = parseArrayish(categoryValue);
-  if (!Array.isArray(cat)) return false;
-
-  const droneCategory = "object.vehicles.aircraft";
-
-  for (const inner of cat) {
-    if (Array.isArray(inner) && inner.some(x => String(x).toLowerCase() === droneCategory)) {
-      return true;
-    }
-    if (!Array.isArray(inner) && String(inner).toLowerCase() === droneCategory) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function parseGeoPoint(geoValue) {
-  const arr = parseArrayish(geoValue);
-
-  if (Array.isArray(arr) && arr.length > 0) {
-    if (typeof arr[0] === "string" && arr[0].includes(",")) {
-      return parseLatLngString(arr[0]);
-    }
-
-    if (arr.length >= 2) {
-      const lat = Number(String(arr[0]).replace("+", "").trim());
-      const lng = Number(String(arr[1]).replace("+", "").trim());
-      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-    }
-  }
-
-  if (typeof geoValue === "string" && geoValue.includes(",")) {
-    return parseLatLngString(geoValue);
-  }
-
-  return null;
-}
-
-function parseLatLngString(s) {
-  const parts = String(s).split(",");
-  if (parts.length < 2) return null;
-
-  const lat = Number(parts[0].replace("+", "").trim());
-  const lng = Number(parts[1].replace("+", "").trim());
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  return { lat, lng };
-}
-
-function parseArrayish(value) {
-  if (value == null) return null;
-  if (Array.isArray(value)) return value;
-
-  const s = String(value).trim();
-  if (!s) return null;
-
-  try { return JSON.parse(s); } catch (_) { }
-
-  try {
-    const jsonish = s.replace(/'/g, '"');
-    return JSON.parse(jsonish);
-  } catch (_) { }
-
-  return null;
-}
-
-function parseTimeMs(value) {
-  if (value == null) return null;
-
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  const s = String(value).trim();
-  if (!s) return null;
-
-  const ms = Date.parse(s);
-  if (Number.isFinite(ms)) return ms;
-
-  return null;
-}
-
-function findRelatedByKey(entity, relType, relKey) {
-  const rels = entity?.related_icons || [];
-  const t = (relType || "").toLowerCase();
-  const k = (relKey || "").toString();
-
-  return rels.find(r =>
-    (r?.relType || "").toLowerCase() === t &&
-    (r?.relKey || "").toString() === k
-  ) || null;
-}
-
-function upsertRelatedMarkerForEntity(entity, relType, sourceId, lat, lng, data, options = {}) {
-  if (!entity) return null;
-
-  const relKey = `${sourceId}_${data.timeMs}`;
-  const cfg = getRelatedIconConfig(relType, options);
-  if (!cfg) return null;
-
-  const existing = findRelatedByKey(entity, relType, relKey);
-
-  if (!existing) {
-    const isLatest = data.isLatest;
-
-    const finalOpacity = isLatest ? 1.0 : (cfg.historyOpacity || 0.2);
-    const finalColor = isLatest ? cfg.color : (cfg.historyColor || "#888888");
-
-    const icon = assignIconFixedColor(cfg.iconType, cfg.size, finalColor);
-
-    const marker = L.marker([lat, lng], {
-      icon: icon,
-      interactive: true,
-      opacity: finalOpacity
-    }).addTo(map);
-
-    if (marker.getElement()) {
-      marker.getElement().style.opacity = finalOpacity;
-    } else {
-      marker.on('add', function () {
-        if (marker.getElement()) marker.getElement().style.opacity = finalOpacity;
-      });
-    }
-
-    let distStr = "N/A";
-    if (map) {
-      const dMeters = map.distance([lat, lng], [entity.lat, entity.lng]);
-      distStr = dMeters >= 1000 ? (dMeters / 1000).toFixed(2) + " km" : Math.round(dMeters) + " m";
-    }
-
-    const tooltipData = {
-      ...data,
-      distance: distStr,
-      lat: lat,
-      lng: lng
-    };
-
-    const tooltipContent = getDroneTooltipContent(tooltipData);
-    marker.bindTooltip(tooltipContent, {
-      direction: 'top',
-      offset: [0, -10],
-      className: 'drone-tooltip'
-    });
-
-    const rel = {
-      relId: generateId(),
-      relType,
-      relKey: relKey,
-      lat, lng,
-      timeMs: data.timeMs,
-      baseOpacity: finalOpacity,
-      isLatest: isLatest,
-      marker
-    };
-
-    entity.related_icons.push(rel);
-    return rel;
-  } else {
-    const wasLatest = existing.isLatest;
-    existing.isLatest = data.isLatest;
-
-    // If the "latest" status changed, update the visual appearance of the marker.
-    if (wasLatest !== data.isLatest) {
-      const finalOpacity = data.isLatest ? 1.0 : (cfg.historyOpacity || 0.2);
-      const finalColor = data.isLatest ? cfg.color : (cfg.historyColor || "#888888");
-
-      existing.baseOpacity = finalOpacity;
-
-      const newIcon = assignIconFixedColor(cfg.iconType, cfg.size, finalColor);
-      existing.marker.setIcon(newIcon);
-      existing.marker.setOpacity(finalOpacity);
-
-      if (existing.marker.getElement()) {
-        existing.marker.getElement().style.opacity = finalOpacity;
-      }
-    }
-  }
-
-  return existing;
-}
-
-function getDroneTooltipContent(data) {
-  if (!data) return "";
-
-  return `
-        <div class="drone-tooltip" style="text-align:left;">
-            <b>Source ID:</b> ${data.sourceId || "Unknown"}<br/>
-            <b>Time:</b> ${data.start_time || "N/A"}<br/>
-            <b>Location:</b> ${data.lat?.toFixed(5)}, ${data.lng?.toFixed(5)}<br/>
-            <b>Distance:</b> ${data.distance || "N/A"}<br/>
-        </div>
-    `;
-}
 
 function setDefaultPosition() {
   if (map) {
@@ -2218,11 +1343,13 @@ function setDefaultPosition() {
   }
 }
 
+
 function resetMapPosition() {
   if (map) {
     map.setView(defaultView.center, defaultView.zoom);
   }
 }
+
 
 function centerMapOnEntity(entity) {
   if (map && entity) {
@@ -2230,11 +1357,13 @@ function centerMapOnEntity(entity) {
   }
 }
 
+
 function centerAndZoomMapOnEntity(entity) {
   if (map && entity) {
     map.setView([entity.lat, entity.lng], (map.getMaxZoom() - 2));
   }
 }
+
 
 async function loadSavedMapState() {
   try {
@@ -2249,7 +1378,10 @@ async function loadSavedMapState() {
     if (res.global_settings) {
       allNamesVisible = res.global_settings.names_visible ?? true;
       allBadgesVisible = res.global_settings.badges_visible ?? true;
+      allDronesVisible = res.global_settings.drones_visible ?? true;
+      allTargetsVisible = res.global_settings.targets_visible ?? true;
       showHistory = res.global_settings.show_history ?? true;
+      showTargetHistory = res.global_settings.show_target_history ?? true;
       globalSizeEnabled = res.global_settings.global_size_enabled ?? res.global_settings.global_size ?? false;
       const savedGlobalSize = Number(res.global_settings.global_size_value ?? globalEntitySize);
       globalEntitySize = Number.isFinite(savedGlobalSize) && savedGlobalSize >= 1 ? savedGlobalSize : 32;
@@ -2322,6 +1454,17 @@ async function loadSavedMapState() {
       await fetchAllSvgPlansBulk();
     }
 
+    if (dates) {
+      try {
+        const independentTargetsResponse = await fetchIndependentTargetsBulk(dates);
+        if (independentTargetsResponse && independentTargetsResponse.status === "success") {
+          syncIndependentTargets(independentTargetsResponse.data || []);
+        }
+      } catch (e) {
+        console.error("Independent targets fetch failed", e);
+      }
+    }
+
     drawInfrastructureLinks();
     updateBadgesVisibility();
     updateRelatedIconsVisibility();
@@ -2329,6 +1472,7 @@ async function loadSavedMapState() {
     console.error("Error loading state:", err);
   }
 }
+
 
 function saveCurrentMapState() {
   const assetsToSave = mapEntities.map(e => ({
@@ -2352,7 +1496,10 @@ function saveCurrentMapState() {
     global_settings: {
       names_visible: allNamesVisible,
       badges_visible: allBadgesVisible,
+      drones_visible: allDronesVisible,
+      targets_visible: allTargetsVisible,
       show_history: showHistory,
+      show_target_history: showTargetHistory,
       global_size: globalSizeEnabled,
       global_size_enabled: globalSizeEnabled,
       global_size_value: globalEntitySize,
@@ -2371,6 +1518,7 @@ function saveCurrentMapState() {
   });
 }
 
+
 function normalizeModalPositionForDrag(modalElement, ui) {
   const rect = modalElement.getBoundingClientRect();
 
@@ -2383,6 +1531,7 @@ function normalizeModalPositionForDrag(modalElement, ui) {
   ui.position.left = rect.left;
   ui.position.top = rect.top;
 }
+
 
 function initializeDraggableModals() {
   if (typeof $.fn.draggable !== "function") return;
@@ -2405,6 +1554,7 @@ function initializeDraggableModals() {
     $modal.data("drag-initialized", true);
   });
 }
+
 
 function initializeResizableModals() {
   if (typeof $.fn.resizable !== "function") return;
@@ -2429,6 +1579,7 @@ function initializeResizableModals() {
   });
 }
 
+
 function centerModal($modal) {
   if (!$modal.length) return;
 
@@ -2450,6 +1601,7 @@ function centerModal($modal) {
   });
 }
 
+
 function openSettingsModal(shouldPersistState = true) {
   initializeDraggableModals();
   $("#settings-modal").css('display', 'flex');
@@ -2458,7 +1610,10 @@ function openSettingsModal(shouldPersistState = true) {
   $("#past-positions-input").val(past_positions_limit);
   $("#display-entity-names").prop("checked", allNamesVisible);
   $("#display-alerts").prop("checked", allBadgesVisible);
+  $("#display-drones").prop("checked", allDronesVisible);
+  $("#display-targets").prop("checked", allTargetsVisible);
   $("#enable-history-tracking").prop("checked", showHistory);
+  $("#enable-target-history-tracking").prop("checked", showTargetHistory);
   $("#past-positions-input").prop("disabled", !showHistory);
   $("#enable-global-size").prop("checked", globalSizeEnabled);
   $("#global-entity-size-input").val(globalEntitySize);
@@ -2477,11 +1632,759 @@ function closeSettingsModal() {
   clearModalSessionState();
 }
 
+var iconsOriginFilter = 'all';
+
+function applyIconsFilter() {
+  $('.icon-chip').each(function () {
+    $(this).toggleClass('icon-chip-active', $(this).data('filter') === iconsOriginFilter);
+  });
+  $('#icons-grid .icon-tile').each(function () {
+    const isVisible = iconsOriginFilter === 'all' || $(this).data('origin') === iconsOriginFilter;
+    $(this).toggle(isVisible);
+  });
+}
+
+// Custom files that failed validation get a tile in the grid (click to fix or delete); default ones are only listed here.
+function renderRejectedIconsBanner() {
+  const banner = $('#icons-rejected-banner').empty();
+  banner.toggle(rejectedIcons.length > 0);
+  if (!rejectedIcons.length) return;
+
+  const defaultRejected = rejectedIcons.filter(icon => icon.origin !== 'custom');
+  banner.append($('<div class="icon-rejected-title"></div>').text(rejectedIcons.length + (rejectedIcons.length === 1 ? ' icon not loaded' : ' icons not loaded')));
+  if (rejectedIcons.length > defaultRejected.length) {
+    banner.append($('<div></div>').text('Custom ones are shown below with a red border: click one to fix or delete it.'));
+  }
+  if (defaultRejected.length) {
+    const list = $('<ul class="icon-rejected-list"></ul>');
+    defaultRejected.forEach(icon => list.append($('<li></li>').text(icon.name + ' (default, part of the plugin): ' + icon.reason)));
+    banner.append(list);
+  }
+}
+
+var REJECTED_ICON_HTML = '<svg clip-rule="evenodd" fill-rule="evenodd" stroke-linejoin="round" stroke-miterlimit="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="m2.095 19.886 9.248-16.5c.133-.237.384-.384.657-.384.272 0 .524.147.656.384l9.248 16.5c.064.115.096.241.096.367 0 .385-.309.749-.752.749h-18.496c-.44 0-.752-.36-.752-.749 0-.126.031-.252.095-.367zm1.935-.384h15.939l-7.97-14.219zm7.972-6.497c-.414 0-.75.336-.75.75v3.5c0 .414.336.75.75.75s.75-.336.75-.75v-3.5c0-.414-.336-.75-.75-.75zm-.002-3c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1z" fill-rule="nonzero"/></svg>';
+
+function buildRejectedIconTile(icon) {
+  const badges = $('<div class="icon-tile-badges"></div>').append(
+    $('<span class="icon-badge icon-badge-custom"></span>').text('Custom'),
+    $('<span class="icon-badge icon-badge-broken"></span>').text('Not loaded')
+  );
+  return $('<div class="icon-tile icon-tile-broken"></div>')
+    .attr({ 'data-origin': 'custom', 'data-name': icon.name, 'data-broken': 'true', title: icon.reason })
+    .append($('<div class="icon-tile-image icon-colour icon-tile-broken-image"></div>').html(REJECTED_ICON_HTML), $('<div class="icon-tile-name"></div>').text(icon.name), badges);
+}
+
+function renderIconsGrid() {
+  renderRejectedIconsBanner();
+  const grid = $("#icons-grid").empty();
+  rejectedIcons.filter(icon => icon.origin === 'custom').forEach(icon => grid.append(buildRejectedIconTile(icon)));
+  (fileIconsCache || []).forEach(icon => {
+    const isCustom = icon.origin === 'custom';
+    const iconBindings = iconBindingsData.bindings.filter(binding => binding.icon === icon.class_name);
+    const bindingTypes = [...new Set(iconBindings.map(binding => binding.type))];
+
+    const preview = $('<div class="icon-tile-image icon-colour"></div>').html(icon.html);
+    const name = $('<div class="icon-tile-name"></div>').text(icon.class_name);
+    const badges = $('<div class="icon-tile-badges"></div>');
+    badges.append($('<span class="icon-badge"></span>').text(isCustom ? 'Custom' : 'Default').toggleClass('icon-badge-custom', isCustom));
+    (bindingTypes.length ? bindingTypes : ['generic']).forEach(bindingType => {
+      badges.append($('<span class="icon-badge"></span>').text(bindingType.charAt(0).toUpperCase() + bindingType.slice(1)));
+    });
+
+    const tile = $('<div class="icon-tile"></div>').attr({ 'data-origin': isCustom ? 'custom' : 'default', 'data-name': icon.class_name }).append(preview, name, badges);
+    if (iconBindings.length) tile.attr('title', iconBindings.map(binding => binding.type + ': ' + binding.value).join('\n'));
+    grid.append(tile);
+  });
+  applyIconsFilter();
+  updateIconResetButtons();
+}
+
+$(document).off('click.iconFilter').on('click.iconFilter', '.icon-chip', function () {
+  iconsOriginFilter = $(this).data('filter');
+  applyIconsFilter();
+});
+
+function openIconsModal(shouldPersistState = true) {
+  initializeDraggableModals();
+  $("#icons-modal").css('display', 'flex');
+  showIconsView('library');
+  renderIconsGrid();
+  centerModal($("#icons-modal"));
+  $('#modal-mask').css('display', 'flex');
+  $("#past-positions-input").val(past_positions_limit);
+  $("#display-entity-names").prop("checked", allNamesVisible);
+  $("#display-alerts").prop("checked", allBadgesVisible);
+  $("#display-drones").prop("checked", allDronesVisible);
+  $("#display-targets").prop("checked", allTargetsVisible);
+  $("#enable-history-tracking").prop("checked", showHistory);
+  $("#enable-target-history-tracking").prop("checked", showTargetHistory);
+  $("#past-positions-input").prop("disabled", !showHistory);
+  $("#enable-global-size").prop("checked", globalSizeEnabled);
+  $("#global-entity-size-input").val(globalEntitySize);
+  $("#global-entity-size-input").prop("disabled", !globalSizeEnabled);
+  $("#map-layer-select").val(currentMapLayerKey);
+  $("#alert-display-size-input").val(alertDisplaySize);
+  $("#name-display-size-input").val(nameDisplaySize);
+  if (shouldPersistState) {
+    saveModalSessionState('icons-modal');
+  }
+}
+
+function closeIconsModal() {
+  showIconsView('library');
+  $('#icons-modal').css('display', 'none');
+  $('#modal-mask').css('display', 'none');
+  clearModalSessionState();
+}
+
+function showIconsView(view, mode = 'upload') {
+  const titles = { library: 'Manage Icons', bulk: 'Upload multiple icons', upload: 'Upload new icon', edit: 'Edit icon' };
+  $('#icons-modal').attr({ 'data-view': view, 'data-mode': mode });
+  $('#icons-modal-title').text(titles[view === 'form' ? mode : view]);
+  $('#icon-name-input').prop('readonly', view === 'form' && mode === 'edit');
+  if (mode !== 'edit') $('#icons-modal').removeAttr('data-icon-origin');
+  if (view === 'library') {
+    clearIconForm();
+    clearBulkList();
+  }
+}
+
+var ICON_PREVIEW_EMPTY_HTML = '<div class="icon-preview-empty">The preview will appear after validation.</div>';
+var ICON_RESULT_EMPTY_HTML = 'Not validated yet. Press <span class="bold">Validate</span> to check the SVG and the name and to see the preview.';
+var ICON_RESULT_TEXTS = {
+  ok: { symbol: '\u2714', title: 'Valid SVG.', summary: 'The icon follows the severity colour.', hint: '' },
+  note: { symbol: '\u2714', title: 'Valid SVG, adjusted.', summary: 'The preview shows the adjusted version, which is the one that will be saved.', hint: '' },
+  warning: { symbol: '\u26A0', title: 'Valid SVG, with warnings.', summary: '', hint: 'Edit the text and press Validate again, or use "Save anyway".' },
+  error: { symbol: '\u2716', title: 'Validation failed.', summary: '', hint: 'Fix the text or the name and press Validate again.' }
+};
+var ICON_RESULT_CLASSES = { ok: 'icon-result-ok', note: 'icon-result-ok', warning: 'icon-result-warning', error: 'icon-result-error' };
+var ICON_PREVIEW_SAMPLES = [{ label: 'Black', color: '#000' }, { label: 'Red', color: '#d32f2f' }];
+var ICON_PREVIEW_SIZES = [96, 32, 24];
+
+var validatedIcon = null;
+
+function updateIconActionButton() {
+  let label = 'Validate';
+  if (validatedIcon) {
+    if (validatedIcon.level === 'warning') label = 'Save anyway';
+    else label = validatedIcon.exists === 'custom' ? 'Overwrite' : 'Save';
+  }
+  $('#validate-icon-button').text(label);
+}
+
+function resetIconValidation() {
+  validatedIcon = null;
+  updateIconActionButton();
+  $('#icon-preview').html(ICON_PREVIEW_EMPTY_HTML);
+  $('#icon-validation-result').attr('class', 'icon-result icon-result-neutral').html(ICON_RESULT_EMPTY_HTML);
+}
+
+function renderIconValidation(validation) {
+  const resultBox = $('#icon-validation-result').attr('class', 'icon-result ' + ICON_RESULT_CLASSES[validation.level]).empty();
+  const resultTexts = ICON_RESULT_TEXTS[validation.level];
+  const nameIsAvailable = validation.level !== 'error' && !validation.exists;
+  const headline = [resultTexts.summary, nameIsAvailable ? 'Name available.' : ''].filter(Boolean).join(' ');
+  resultBox.append($('<strong></strong>').text(resultTexts.symbol + ' ' + resultTexts.title), document.createTextNode(headline ? ' ' + headline : ''));
+
+  if (validation.messages.length) {
+    const messageList = $('<ul class="icon-result-list"></ul>');
+    validation.messages.forEach(message => messageList.append($('<li></li>').text(message)));
+    resultBox.append(messageList);
+  }
+  if (resultTexts.hint) {
+    resultBox.append($('<span class="icon-result-hint"></span>').text(resultTexts.hint));
+  }
+
+  const preview = $('#icon-preview').empty();
+  if (!validation.svg) {
+    preview.html(ICON_PREVIEW_EMPTY_HTML);
+    return;
+  }
+  ICON_PREVIEW_SAMPLES.forEach(sample => {
+    const sizes = $('<div class="icon-preview-sizes"></div>');
+    ICON_PREVIEW_SIZES.forEach(size => {
+      const sampleIcon = $('<div class="icon-colour icon-outlined icon-preview-sample"></div>')
+        .attr('style', '--icon-size:' + size + 'px; color:' + sample.color + '; fill:' + sample.color + ';')
+        .html(validation.svg);
+      sizes.append(sampleIcon);
+    });
+    preview.append($('<div class="icon-preview-card"></div>').append(sizes, $('<div class="icon-preview-caption"></div>').text(sample.label)));
+  });
+}
+
+async function validateIconForm() {
+  try {
+    const validation = await requestIconValidation($('#icon-name-input').val().trim(), $('#icon-svg-textarea').val());
+    renderIconValidation(validation);
+    validatedIcon = validation.level === 'error' ? null : validation;
+    updateIconActionButton();
+  } catch (error) {
+    console.error('Icon validation failed', error);
+    renderIconValidation({ level: 'error', messages: [describeIconRequestError(error, 'validate')], svg: null });
+  }
+}
+
+var ICON_MAX_FILE_BYTES = 50 * 1024;
+
+// Status 0 means no answer arrived; some network devices reset requests whose body contains <script> or similar.
+function describeIconRequestError(requestError, action) {
+  if (requestError && requestError.status === 0) {
+    return 'The connection was interrupted before the server answered. A network device may be blocking the SVG ' +
+      '(for example if it contains <script> or similar elements): remove them and try again.';
+  }
+  return 'The server could not ' + action + ' the icon.';
+}
+
+async function reloadIconCatalog() {
+  fileIconsCache = null;
+  dbIcons = await loadIcons();
+  renderIconsGrid();
+}
+
+// Only needed when an icon already in use changes (overwrite or delete).
+function refreshMarkersUsingIcons(iconNames) {
+  mapEntities.filter(entity => iconNames.includes(entity.iconType)).forEach(refreshEntityIcon);
+  refreshRelatedMarkersUsingIcons(iconNames);
+}
+
+// Rebuilds the drone/target markers after the associations change; the alerts signature is cleared so no entity is skipped.
+function forceRelatedResync() {
+  mapEntities.forEach(entity => { entity._lastAlertsSignature = ""; });
+  refreshMacroData();
+}
+
+function openIconUploadForm() {
+  showIconsView('form', 'upload');
+}
+
+function openIconBulkView() {
+  showIconsView('bulk');
+}
+
+var ICON_BULK_MAX_FILES = 50;
+var ICON_BULK_VALIDATION_DELAY_MS = 400;
+var ICON_BULK_NOTE_DEFAULT = 'Category is only active for Source and Target.';
+var ICON_BULK_NOTE_BLOCKED = 'Fix or remove the rows marked in red to enable Confirm.';
+var ICON_BULK_NOTE_DONE = 'The library is reloaded once the upload is finished.';
+var ICON_BULK_TYPES = [['generic', 'Generic'], ['target', 'Target'], ['source', 'Source']];
+var bulkRows = [];
+var bulkLimitNote = '';
+var bulkIsSending = false;
+var bulkUploadAttempted = false;
+
+function deriveIconNameFromFile(fileName) {
+  return fileName.replace(/\.svg$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40);
+}
+
+// Files that cannot be used get an error row that can only be removed.
+async function createBulkRow(file) {
+  const row = {
+    name: deriveIconNameFromFile(file.name), type: GENERIC_TYPE, category: '', svgText: '', error: '',
+    validation: null, validationId: 0, validationTimer: null, overwrite: false,
+    saved: false, savedMessage: '', saveError: ''
+  };
+  if (file.size > ICON_MAX_FILE_BYTES) {
+    row.error = 'The file is larger than ' + (ICON_MAX_FILE_BYTES / 1024) + ' KB.';
+    return row;
+  }
+  try {
+    row.svgText = await file.text();
+  } catch (readError) {
+    row.error = 'The file could not be read.';
+  }
+  return row;
+}
+
+// Checks between rows: the same name or the same Type + Category would make one row overwrite the other.
+function getBulkRowConflicts(row) {
+  const describeRows = otherRows => (otherRows.length === 1 ? 'row ' : 'rows ') + otherRows.map(otherRow => bulkRows.indexOf(otherRow) + 1).join(', ');
+  const otherRows = bulkRows.filter(otherRow => otherRow !== row && !otherRow.error);
+  const conflicts = [];
+
+  const normalizedName = row.name.trim().toLowerCase();
+  const rowsWithSameName = normalizedName ? otherRows.filter(otherRow => otherRow.name.trim().toLowerCase() === normalizedName) : [];
+  if (rowsWithSameName.length) conflicts.push('Same name as ' + describeRows(rowsWithSameName) + '. Rename one of them.');
+
+  if (row.type !== GENERIC_TYPE && row.category) {
+    const rowsWithSameCategory = otherRows.filter(otherRow => otherRow.type === row.type && otherRow.category === row.category);
+    if (rowsWithSameCategory.length) conflicts.push('Same Type and Category as ' + describeRows(rowsWithSameCategory) + '.');
+  }
+  return conflicts;
+}
+
+// Icon that currently owns the category chosen by the row, if it is not the row's own icon.
+function getReplacedAssociationIcon(row) {
+  if (row.type === GENERIC_TYPE || !row.category) return '';
+  const boundIcon = iconBindingIndex[row.type + '|' + row.category.toLowerCase()];
+  return boundIcon && boundIcon !== row.name.trim() ? boundIcon : '';
+}
+
+// Level is the most severe message; a null server verdict means the row is waiting for the answer.
+function getBulkRowStatus(row) {
+  if (row.saved) return { level: 'saved', messages: [{ kind: 'ok', text: '\u2714 ' + row.savedMessage }] };
+  if (row.error) return { level: 'error', messages: [{ kind: 'error', text: '\u2716 ' + row.error }] };
+  if (!row.validation) return { level: 'pending', messages: [{ kind: 'note', text: 'Validating\u2026' }] };
+
+  const verdict = row.validation;
+  const verdictText = verdict.messages.join(' ');
+  const messages = [];
+  if (row.saveError) messages.push({ kind: 'error', text: '\u2716 Failed: ' + row.saveError + ' You can retry.' });
+  if (verdict.level === 'error') messages.push({ kind: 'error', text: '\u2716 ' + verdictText });
+  const conflicts = getBulkRowConflicts(row);
+  conflicts.forEach(conflict => messages.push({ kind: 'error', text: '\u2716 ' + conflict }));
+
+  if (verdict.level !== 'error') {
+    if (verdict.level === 'warning' || verdict.exists) {
+      messages.push({ kind: 'warning', text: '\u26A0 ' + verdictText, canOverwrite: Boolean(verdict.exists) });
+    } else if (verdict.level === 'note') {
+      messages.push({ kind: 'note', text: verdictText });
+    }
+    const replacedIcon = getReplacedAssociationIcon(row);
+    if (replacedIcon) {
+      messages.push({ kind: 'warning', text: '\u26A0 This category is already associated with ' + replacedIcon + ': saving replaces that association.' });
+    }
+  }
+
+  let level = 'ok';
+  if (verdict.level === 'error' || conflicts.length) level = 'error';
+  else if (row.saveError) level = 'failed';
+  else if (messages.some(message => message.kind === 'warning')) level = 'warning';
+  return { level, messages };
+}
+
+function renderBulkRowStatus(rowElement, row) {
+  const status = getBulkRowStatus(row);
+  rowElement
+    .toggleClass('icon-bulk-row-error', status.level === 'error' || status.level === 'failed')
+    .toggleClass('icon-bulk-row-warning', status.level === 'warning')
+    .toggleClass('icon-bulk-row-done', status.level === 'saved');
+  rowElement.find('.icon-bulk-message').remove();
+
+  status.messages.forEach(item => {
+    const message = $('<div class="icon-bulk-message"></div>').addClass('icon-bulk-message-' + item.kind).text(item.text);
+    if (item.canOverwrite) {
+      const overwriteBox = $('<input type="checkbox" class="icon-bulk-overwrite-input">').prop('checked', row.overwrite);
+      message.append($('<label class="icon-bulk-overwrite"></label>').append(overwriteBox, document.createTextNode('Overwrite')));
+    }
+    rowElement.append(message);
+  });
+}
+
+// Rows whose name already exists are skipped unless Overwrite is ticked.
+function isBulkRowSkipped(row) {
+  return Boolean(!row.saved && row.validation && row.validation.exists && !row.overwrite);
+}
+
+function isBulkRowSendable(row) {
+  return ['ok', 'warning', 'failed'].includes(getBulkRowStatus(row).level) && !isBulkRowSkipped(row);
+}
+
+// Any change can create or remove a conflict in other rows, so all the statuses are recomputed.
+function refreshBulkStatuses() {
+  bulkRows.forEach((row, index) => renderBulkRowStatus($('#icon-bulk-list .icon-bulk-row[data-index="' + index + '"]'), row));
+  updateBulkSummary();
+}
+
+// Answers that arrive after the row was edited or removed are ignored.
+async function validateBulkRow(row) {
+  if (row.error || !bulkRows.includes(row)) return;
+  const validationId = ++row.validationId;
+  row.validation = null;
+  refreshBulkStatuses();
+  let validation;
+  try {
+    validation = await requestIconValidation(row.name.trim(), row.svgText);
+  } catch (requestError) {
+    console.error('Bulk icon validation failed', requestError);
+    validation = { level: 'error', messages: [describeIconRequestError(requestError, 'validate')], svg: null, exists: null };
+  }
+  if (validationId !== row.validationId) return;
+  row.validation = validation;
+  if (!validation.exists) row.overwrite = false;
+  refreshBulkStatuses();
+}
+
+async function addBulkFiles(files) {
+  const freeSlots = Math.max(ICON_BULK_MAX_FILES - bulkRows.length, 0);
+  const acceptedFiles = files.slice(0, freeSlots);
+  const newRows = [];
+  for (const file of acceptedFiles) newRows.push(await createBulkRow(file));
+  bulkRows.push(...newRows);
+  const skippedCount = files.length - acceptedFiles.length;
+  bulkLimitNote = skippedCount ? 'Only ' + ICON_BULK_MAX_FILES + ' files are allowed: ' + skippedCount + ' file(s) were left out.' : '';
+  renderBulkList();
+  for (const row of newRows) await validateBulkRow(row);
+}
+
+function fillBulkCategorySelect(rowElement, row) {
+  const categories = iconBindingsData.vocabularies[row.type] || [];
+  const categorySelect = rowElement.find('.icon-bulk-category').empty();
+  if (!categories.length) {
+    categorySelect.append($('<option></option>').html('&mdash;')).prop('disabled', true);
+    return;
+  }
+  categories.forEach(category => categorySelect.append($('<option></option>').val(category).text(category)));
+  categorySelect.val(row.category).prop('disabled', Boolean(row.error || row.saved));
+}
+
+function buildBulkRow(row, index) {
+  const isLocked = Boolean(row.error || row.saved);
+  const rowElement = $('<div class="icon-bulk-row"></div>').attr('data-index', index);
+  const typeSelect = $('<select class="modal-input icon-bulk-type"></select>').prop('disabled', isLocked);
+  ICON_BULK_TYPES.forEach(([value, label]) => typeSelect.append($('<option></option>').val(value).text(label)));
+  typeSelect.val(row.type);
+
+  rowElement.append($('<div class="icon-bulk-row-main"></div>').append(
+    $('<span class="icon-bulk-number"></span>').text(index + 1),
+    $('<input type="text" class="modal-input icon-bulk-name" maxlength="40" autocomplete="off">').val(row.name).prop('disabled', isLocked),
+    typeSelect,
+    $('<select class="modal-input icon-bulk-category"></select>'),
+    $('<button type="button" class="btn btn-danger icon-bulk-remove" title="Remove row">X</button>').prop('disabled', row.saved)
+  ));
+  fillBulkCategorySelect(rowElement, row);
+  renderBulkRowStatus(rowElement, row);
+  return rowElement;
+}
+
+// Summary chips, footer note and buttons all follow the row statuses.
+function updateBulkSummary() {
+  const summary = $('#icon-bulk-summary').empty();
+  const confirmButton = $('#confirm-icon-bulk-button');
+  $('#select-bulk-files-button, #cancel-icon-bulk-button').prop('disabled', bulkIsSending);
+  $('#cancel-icon-bulk-button').text(bulkUploadAttempted ? 'Close' : 'Cancel');
+  if (!bulkRows.length) {
+    summary.text('No files selected');
+    confirmButton.prop('disabled', true).text('Confirm upload');
+    $('#icon-bulk-note').text(bulkLimitNote || ICON_BULK_NOTE_DEFAULT);
+    return;
+  }
+
+  const levelCounts = { saved: 0, ok: 0, warning: 0, failed: 0, error: 0, pending: 0 };
+  bulkRows.forEach(row => { levelCounts[getBulkRowStatus(row).level] += 1; });
+  summary.append(document.createTextNode(bulkRows.length + (bulkRows.length === 1 ? ' file ' : ' files ')));
+  [['saved', 'saved', 'icon-chip-ok'], ['ok', 'ready', 'icon-chip-ok'], ['warning', 'warning', 'icon-chip-warning'],
+    ['failed', 'failed', 'icon-chip-error'], ['error', 'to fix', 'icon-chip-error']].forEach(([level, label, chipClass]) => {
+    if (levelCounts[level]) summary.append($('<span class="icon-chip"></span>').addClass(chipClass).text(levelCounts[level] + ' ' + label), ' ');
+  });
+  if (levelCounts.pending) summary.append(document.createTextNode('validating\u2026'));
+
+  const skippedCount = bulkRows.filter(isBulkRowSkipped).length;
+  const sendCount = bulkRows.filter(isBulkRowSendable).length;
+  const isBlocked = bulkIsSending || levelCounts.error > 0 || levelCounts.pending > 0 || sendCount === 0;
+  let confirmLabel = 'Confirm upload';
+  if (!isBlocked) confirmLabel = (levelCounts.failed ? 'Retry failed (' : 'Confirm upload (') + sendCount + ')';
+  confirmButton.prop('disabled', isBlocked).text(confirmLabel);
+
+  let noteText = bulkLimitNote || ICON_BULK_NOTE_DEFAULT;
+  if (levelCounts.error > 0) noteText = ICON_BULK_NOTE_BLOCKED;
+  else if (skippedCount > 0) noteText = skippedCount + ' row(s) with an existing name will be skipped unless Overwrite is ticked.';
+  else if (bulkUploadAttempted) noteText = ICON_BULK_NOTE_DONE;
+  $('#icon-bulk-note').text(noteText);
+}
+
+function renderBulkList() {
+  const body = $('#icon-bulk-body');
+  const scrollPosition = body.scrollTop();
+  const list = $('#icon-bulk-list').empty();
+  bulkRows.forEach((row, index) => list.append(buildBulkRow(row, index)));
+  body.attr('data-empty', bulkRows.length ? 'false' : 'true').scrollTop(scrollPosition);
+  updateBulkSummary();
+}
+
+function clearBulkList() {
+  bulkRows.forEach(row => clearTimeout(row.validationTimer));
+  bulkRows = [];
+  bulkLimitNote = '';
+  bulkUploadAttempted = false;
+  renderBulkList();
+}
+
+function getBulkRowIndex(element) {
+  return Number($(element).closest('.icon-bulk-row').attr('data-index'));
+}
+
+// Any edit makes a previous failure obsolete.
+function resetBulkRowFailure(row) {
+  row.saveError = '';
+}
+
+function describeSavedBulkRow(row, hadBindings, replacedIcon) {
+  if (row.type !== GENERIC_TYPE) {
+    return 'Saved and associated with ' + row.category + '.' + (replacedIcon ? ' The association of ' + replacedIcon + ' was replaced.' : '');
+  }
+  return hadBindings ? 'Saved. Its previous associations were removed.' : 'Saved.';
+}
+
+// Rows are sent one at a time; a failed row stays in the list so it can be corrected and retried.
+async function confirmBulkUpload() {
+  const rowsToSend = bulkRows.filter(isBulkRowSendable);
+  if (bulkIsSending || !rowsToSend.length) return;
+  bulkIsSending = true;
+  bulkUploadAttempted = true;
+  $('#icon-bulk-body').attr('data-sending', 'true');
+
+  let bindingsChanged = false;
+  const overwrittenNames = [];
+  let savedCount = 0;
+  try {
+    for (const [position, row] of rowsToSend.entries()) {
+      if (!bulkRows.includes(row)) break;
+      $('#confirm-icon-bulk-button').text('Uploading ' + (position + 1) + '/' + rowsToSend.length + '\u2026');
+      const iconName = row.name.trim();
+      const hadBindings = iconBindingsData.bindings.some(binding => binding.icon === iconName);
+      const replacedIcon = getReplacedAssociationIcon(row);
+      try {
+        const response = await requestIconSave(iconName, row.svgText, row.overwrite, row.type, row.type === GENERIC_TYPE ? '' : row.category);
+        if (response.status === 'success') {
+          row.saved = true;
+          row.saveError = '';
+          row.savedMessage = describeSavedBulkRow(row, hadBindings, replacedIcon);
+          savedCount += 1;
+          if (row.validation.exists) overwrittenNames.push(iconName);
+          if (row.type !== GENERIC_TYPE || hadBindings) bindingsChanged = true;
+        } else {
+          row.saveError = response.message || 'The server could not save the icon.';
+        }
+      } catch (requestError) {
+        console.error('Bulk icon save failed', requestError);
+        row.saveError = describeIconRequestError(requestError, 'save');
+      }
+      renderBulkList();
+    }
+
+    if (savedCount) {
+      if (bindingsChanged) await loadIconBindings();
+      await reloadIconCatalog();
+      if (overwrittenNames.length) refreshMarkersUsingIcons(overwrittenNames);
+      if (bindingsChanged) forceRelatedResync();
+    }
+  } finally {
+    bulkIsSending = false;
+    $('#icon-bulk-body').removeAttr('data-sending');
+    renderBulkList();
+  }
+}
+
+$(document).off('.iconBulk')
+  .on('click.iconBulk', '#select-bulk-files-button', () => $('#icon-bulk-file-input').trigger('click'))
+  .on('click.iconBulk', '#confirm-icon-bulk-button', confirmBulkUpload)
+  .on('change.iconBulk', '#icon-bulk-file-input', async function () {
+    const selectedFiles = Array.from(this.files);
+    this.value = '';
+    if (selectedFiles.length) await addBulkFiles(selectedFiles);
+  })
+  .on('input.iconBulk', '.icon-bulk-name', function () {
+    const row = bulkRows[getBulkRowIndex(this)];
+    row.name = $(this).val();
+    resetBulkRowFailure(row);
+    clearTimeout(row.validationTimer);
+    row.validationId += 1;
+    row.validation = null;
+    refreshBulkStatuses();
+    row.validationTimer = setTimeout(() => validateBulkRow(row), ICON_BULK_VALIDATION_DELAY_MS);
+  })
+  .on('change.iconBulk', '.icon-bulk-type', function () {
+    const row = bulkRows[getBulkRowIndex(this)];
+    row.type = $(this).val();
+    row.category = (iconBindingsData.vocabularies[row.type] || [])[0] || '';
+    resetBulkRowFailure(row);
+    fillBulkCategorySelect($(this).closest('.icon-bulk-row'), row);
+    refreshBulkStatuses();
+  })
+  .on('change.iconBulk', '.icon-bulk-category', function () {
+    const row = bulkRows[getBulkRowIndex(this)];
+    row.category = $(this).val();
+    resetBulkRowFailure(row);
+    refreshBulkStatuses();
+  })
+  .on('change.iconBulk', '.icon-bulk-overwrite-input', function () {
+    bulkRows[getBulkRowIndex(this)].overwrite = $(this).prop('checked');
+    refreshBulkStatuses();
+  })
+  .on('click.iconBulk', '.icon-bulk-remove', function () {
+    const [removedRow] = bulkRows.splice(getBulkRowIndex(this), 1);
+    clearTimeout(removedRow.validationTimer);
+    renderBulkList();
+  });
+
+function openIconEditForm(icon, rejectionReason = '') {
+  clearIconForm();
+  $('#icon-name-input').val(icon.class_name);
+  $('#icon-svg-textarea').val(icon.html);
+  const iconBinding = iconBindingsData.bindings.find(binding => binding.icon === icon.class_name);
+  $('#icon-type-select').val(iconBinding ? iconBinding.type : GENERIC_TYPE);
+  updateIconClassField(iconBinding ? iconBinding.value : '');
+  showIconsView('form', 'edit');
+  $('#icons-modal').attr('data-icon-origin', icon.origin);
+  $('#icons-modal-title').text('Edit icon: ' + icon.class_name);
+  if (rejectionReason) renderIconValidation({ level: 'error', messages: ['This file is not loaded: ' + rejectionReason], svg: null });
+}
+
+async function loadIconFile(file) {
+  if (file.size > ICON_MAX_FILE_BYTES) {
+    renderIconValidation({ level: 'error', messages: ['The file is larger than ' + (ICON_MAX_FILE_BYTES / 1024) + ' KB.'], svg: null });
+    return;
+  }
+  const svgText = await file.text();
+  resetIconValidation();
+  $('#icon-svg-textarea').val(svgText);
+  $('#icon-file-name').text(file.name);
+  if (!$('#icon-name-input').val().trim()) {
+    $('#icon-name-input').val(file.name.replace(/\.svg$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40));
+  }
+}
+
+function getCustomIconCounts() {
+  const customIcons = (fileIconsCache || []).filter(icon => icon.origin === 'custom');
+  const overrideCount = customIcons.filter(icon => icon.overridesDefault).length;
+  return { total: customIcons.length, overrides: overrideCount, fresh: customIcons.length - overrideCount };
+}
+
+function updateIconResetButtons() {
+  const counts = getCustomIconCounts();
+  $('#restore-default-icons-button').toggle(counts.overrides > 0);
+  $('#delete-custom-icons-button').toggle(counts.total > 0);
+}
+
+// After icons are removed their associations change too: reload both and rebuild the markers that depended on them.
+async function reloadAfterIconRemoval(removedNames) {
+  const previousBindings = JSON.stringify(iconBindingsData.bindings);
+  await loadIconBindings();
+  await reloadIconCatalog();
+  refreshMarkersUsingIcons(removedNames);
+  if (JSON.stringify(iconBindingsData.bindings) !== previousBindings) forceRelatedResync();
+}
+
+async function resetIcons(scope) {
+  const counts = getCustomIconCounts();
+  const confirmMessage = scope === 'overrides'
+    ? 'Restore ' + counts.overrides + ' default icon(s) to their original version? The custom versions will be deleted and their associations will go back to the default ones.'
+    : 'Delete all ' + counts.total + ' custom icon(s)? ' + counts.overrides + ' will go back to the default version and ' + counts.fresh + ' new icon(s) will be lost permanently. All custom associations will be deleted.';
+  if (!confirm(confirmMessage)) return;
+
+  try {
+    const response = await requestIconsReset(scope);
+    if (response.status !== 'success') {
+      alert(response.message);
+    }
+    await reloadAfterIconRemoval(response.removed || []);
+  } catch (error) {
+    console.error('Icon reset failed', error);
+    alert('The server could not reset the icons.');
+  }
+}
+
+$(document).off('.iconReset')
+  .on('click.iconReset', '#restore-default-icons-button', () => resetIcons('overrides'))
+  .on('click.iconReset', '#delete-custom-icons-button', () => resetIcons('all'));
+
+async function deleteIconForm() {
+  const iconName = $('#icon-name-input').val().trim();
+  if (!confirm('Delete the custom icon "' + iconName + '"? Its associations will be removed. If a default icon has the same name, it will be used again with its default associations.')) return;
+
+  try {
+    const response = await requestIconDelete(iconName);
+    if (response.status !== 'success') {
+      renderIconValidation({ level: 'error', messages: [response.message], svg: null });
+      return;
+    }
+    await reloadAfterIconRemoval([iconName]);
+    showIconsView('library');
+  } catch (error) {
+    console.error('Icon delete failed', error);
+    renderIconValidation({ level: 'error', messages: ['The server could not delete the icon.'], svg: null });
+  }
+}
+
+$(document).off('.iconActions')
+  .on('click.iconActions', '#select-icon-file-button', () => $('#icon-file-input').trigger('click'))
+  .on('change.iconActions', '#icon-file-input', async function () {
+    const selectedFile = this.files[0];
+    this.value = '';
+    if (selectedFile) await loadIconFile(selectedFile);
+  })
+  .on('click.iconActions', '#delete-icon-button', deleteIconForm)
+  .on('change.iconActions', '#icon-type-select', () => updateIconClassField())
+  .on('change.iconActions', '#icon-class-select', updateAssociationWarning)
+  .on('click.iconActions', '.icon-tile', function () {
+    const clickedName = $(this).attr('data-name');
+    if ($(this).attr('data-broken')) {
+      const brokenIcon = rejectedIcons.find(icon => icon.origin === 'custom' && icon.name === clickedName);
+      if (brokenIcon) openIconEditForm({ class_name: brokenIcon.name, html: brokenIcon.svg, origin: 'custom' }, brokenIcon.reason);
+      return;
+    }
+    const clickedIcon = (fileIconsCache || []).find(icon => icon.class_name === clickedName);
+    if (clickedIcon) openIconEditForm(clickedIcon);
+  });
+
+var GENERIC_TYPE = 'generic';
+
+// The Generic type has no category: saving with it removes the icon's associations.
+function updateIconClassField(selectedValue = '') {
+  const iconType = $('#icon-type-select').val();
+  const classSelect = $('#icon-class-select').empty();
+  (iconBindingsData.vocabularies[iconType] || []).forEach(category => classSelect.append($('<option></option>').val(category).text(category)));
+  if (selectedValue) classSelect.val(selectedValue);
+  $('#icon-class-field').toggle(iconType !== GENERIC_TYPE);
+  updateAssociationWarning();
+}
+
+// Non-blocking notice: a category has a single icon, so saving replaces the one it has now.
+function updateAssociationWarning() {
+  const replacedIcon = getReplacedAssociationIcon({ name: $('#icon-name-input').val(), type: $('#icon-type-select').val(), category: $('#icon-class-select').val() || '' });
+  $('#icon-association-warning')
+    .text(replacedIcon ? '\u26A0 This category is already associated with ' + replacedIcon + ': saving replaces that association.' : '')
+    .toggle(Boolean(replacedIcon));
+}
+
+function clearIconForm() {
+  $('#icon-name-input, #icon-svg-textarea').val('');
+  $('#icon-file-name').text('');
+  $('#icon-type-select').val(GENERIC_TYPE);
+  updateIconClassField();
+  resetIconValidation();
+}
+
+async function saveIconForm() {
+  try {
+    const iconName = $('#icon-name-input').val().trim();
+    const bindingType = $('#icon-type-select').val();
+    const bindingValue = bindingType === GENERIC_TYPE ? '' : $('#icon-class-select').val();
+    const hadBindings = iconBindingsData.bindings.some(binding => binding.icon === iconName);
+    const response = await requestIconSave(iconName, $('#icon-svg-textarea').val(), validatedIcon.exists === 'custom', bindingType, bindingValue);
+    if (response.status !== 'success') {
+      validatedIcon = null;
+      updateIconActionButton();
+      renderIconValidation({ level: 'error', messages: [response.message], svg: null });
+      return;
+    }
+    const bindingsChanged = bindingType !== GENERIC_TYPE || hadBindings;
+    if (bindingsChanged) await loadIconBindings();
+    await reloadIconCatalog();
+    if (validatedIcon.exists) refreshMarkersUsingIcons([iconName]);
+    if (bindingsChanged) forceRelatedResync();
+    showIconsView('library');
+  } catch (error) {
+    console.error('Icon save failed', error);
+    renderIconValidation({ level: 'error', messages: [describeIconRequestError(error, 'save')], svg: null });
+  }
+}
+
+$(document).off('.iconForm')
+  .on('click.iconForm', '#validate-icon-button', () => (validatedIcon ? saveIconForm() : validateIconForm()))
+  .on('input.iconForm', '#icon-name-input, #icon-svg-textarea', () => {
+    resetIconValidation();
+    updateAssociationWarning();
+  });
+
 async function applyGlobalSettings() {
   const newLimit = parseInt($("#past-positions-input").val(), 10);
   const newNamesVisible = $("#display-entity-names").is(":checked");
   const newAlertsVisible = $("#display-alerts").is(":checked");
+  const newDronesVisible = $("#display-drones").is(":checked");
+  const newTargetsVisible = $("#display-targets").is(":checked");
   const newShowHistory = $("#enable-history-tracking").is(":checked");
+  const newShowTargetHistory = $("#enable-target-history-tracking").is(":checked");
   const newSizeEnabled = $("#enable-global-size").is(":checked");
   const newSizeValue = parseInt($("#global-entity-size-input").val(), 10);
   const selectedMapLayerKey = normalizeMapLayerKey($("#map-layer-select").val());
@@ -2491,7 +2394,10 @@ async function applyGlobalSettings() {
   const limitChanged = newLimit !== past_positions_limit;
   const visibilityChanged = (newNamesVisible !== allNamesVisible) ||
     (newAlertsVisible !== allBadgesVisible) ||
-    (newShowHistory !== showHistory);
+    (newDronesVisible !== allDronesVisible) ||
+    (newTargetsVisible !== allTargetsVisible) ||
+    (newShowHistory !== showHistory) ||
+    (newShowTargetHistory !== showTargetHistory);
   const sizeChanged = (newSizeEnabled !== globalSizeEnabled) ||
     (newSizeEnabled && newSizeValue !== globalEntitySize);
   const mapLayerChanged = selectedMapLayerKey !== currentMapLayerKey;
@@ -2505,7 +2411,10 @@ async function applyGlobalSettings() {
   past_positions_limit = newLimit;
   allNamesVisible = newNamesVisible;
   allBadgesVisible = newAlertsVisible;
+  allDronesVisible = newDronesVisible;
+  allTargetsVisible = newTargetsVisible;
   showHistory = newShowHistory;
+  showTargetHistory = newShowTargetHistory;
   globalSizeEnabled = newSizeEnabled;
   globalEntitySize = newSizeValue;
 
@@ -2532,6 +2441,15 @@ async function applyGlobalSettings() {
       } catch (e) {
         console.error("Bulk fetch failed", e);
       }
+
+      try {
+        const independentTargetsResponse = await fetchIndependentTargetsBulk(dates);
+        if (independentTargetsResponse && independentTargetsResponse.status === "success") {
+          syncIndependentTargets(independentTargetsResponse.data || []);
+        }
+      } catch (e) {
+        console.error("Independent targets fetch failed", e);
+      }
     }
   } else if (sizeChanged || visibilityChanged || displaySizeChanged) {
     mapEntities.forEach(e => {
@@ -2549,6 +2467,7 @@ async function applyGlobalSettings() {
 
 // Temporary addition for development only
 
+
 function openResourcesModal(shouldPersistState = true) {
   initializeDraggableModals();
   initializeResizableModals();
@@ -2560,6 +2479,7 @@ function openResourcesModal(shouldPersistState = true) {
   }
 }
 
+
 function closeResourcesModal() {
   $('#resources-modal').css('display', 'none');
   $('#modal-mask').css('display', 'none');
@@ -2567,6 +2487,7 @@ function closeResourcesModal() {
 }
 
 // Emergency services request - proof of concept, static only
+
 
 function openEmergencyModal(serviceLabel) {
   initializeDraggableModals();
@@ -2584,12 +2505,14 @@ function openEmergencyModal(serviceLabel) {
   $('#modal-mask').css('display', 'flex');
 }
 
+
 function closeEmergencyModal() {
   $('#emergency-modal').css('display', 'none');
   $('#modal-mask').css('display', 'none');
 }
 
 // ------------
+
 
 function resetMap() {
   if (!confirm("Are you sure you want to permanently delete all markers and rules? This action cannot be undone.")) {
@@ -2604,6 +2527,7 @@ function resetMap() {
     if (res.status === "success") {
       clearAllMarkersFromMap(map);
       mapEntities = [];
+      removeAllIndependentTargets();
 
       // Immediate cleanup of lines
       drawInfrastructureLinks();
@@ -2631,6 +2555,7 @@ function resetMap() {
     }
   });
 }
+
 
 function drawInfrastructureLinks() {
   if (!window.infrastructureLayerGroup) {
@@ -2667,6 +2592,7 @@ function drawInfrastructureLinks() {
   });
 }
 
+
 function restoreDefaultMapPosition() {
   defaultView = { ...SYSTEM_DEFAULT };
   map.setView(defaultView.center, defaultView.zoom);
@@ -2674,10 +2600,6 @@ function restoreDefaultMapPosition() {
   closeSettingsModal();
 }
 
-function normalizeMapLayerKey(value) {
-  const normalized = (value || "").toString().trim().toLowerCase();
-  return MAP_LAYER_CONFIGS[normalized] ? normalized : "osm";
-}
 
 function createMapLayer(layerKey) {
   const normalizedKey = normalizeMapLayerKey(layerKey);
@@ -2688,6 +2610,7 @@ function createMapLayer(layerKey) {
     bounds: bounds,
   });
 }
+
 
 function setMapLayer(layerKey) {
   const normalizedKey = normalizeMapLayerKey(layerKey);
@@ -2706,6 +2629,7 @@ function setMapLayer(layerKey) {
   return true;
 }
 
+
 function getMacroAlertsHtmlForTooltip(entity) {
   const colors = {
     high: "#FE0000",
@@ -2723,6 +2647,7 @@ function getMacroAlertsHtmlForTooltip(entity) {
     </div>`;
 }
 
+
 function saveModalSessionState(modalId, entityId = null) {
   const modalData = collectModalFormState(modalId);
   const state = {
@@ -2733,9 +2658,11 @@ function saveModalSessionState(modalId, entityId = null) {
   localStorage.setItem('map_modal_state', JSON.stringify(state));
 }
 
+
 function clearModalSessionState() {
   localStorage.removeItem('map_modal_state');
 }
+
 
 function collectModalFormState(modalId) {
   const modal = document.getElementById(modalId);
@@ -2764,6 +2691,7 @@ function collectModalFormState(modalId) {
   return state;
 }
 
+
 function applyModalFormState(modalId, savedState) {
   if (!savedState || typeof savedState !== "object") return;
 
@@ -2788,6 +2716,7 @@ function applyModalFormState(modalId, savedState) {
   $("#global-entity-size-input").prop("disabled", !$("#enable-global-size").is(":checked"));
 }
 
+
 function bindModalSessionAutoSave() {
   $(document).on("change", ".crud-modal input[type='checkbox'], .crud-modal input[type='radio'], .crud-modal select", function () {
     if (isRestoringModalState) return;
@@ -2809,6 +2738,7 @@ function bindModalSessionAutoSave() {
     saveModalSessionState(modalId, persistedEntityId);
   });
 }
+
 
 async function restoreModalState() {
   const saved = localStorage.getItem('map_modal_state');
@@ -2845,3 +2775,5 @@ async function restoreModalState() {
     isRestoringModalState = false;
   }
 }
+
+

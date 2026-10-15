@@ -14,20 +14,23 @@ This plugin provides a geospatial visualization layer for IDMEFv2 alerts within 
 
 ### 2. Dynamic Alert Visualization
 - **Color Coding**: Entity icons change color (e.g., Green, Yellow, Red) dynamically based on configurable rules.
-- **Source-based Drone Tracking**: Automatically visualizes **Drones** when detected from source category/source id fields in alerts associated with a monitored entity. The drone appears near the target entity.
+- **Source and Target Icons**: Alert sources and targets are drawn on the map at the position given by their `GeoLocation`, with the icon associated with their category (see [Icon Library and Management](#13-icon-library-and-management)). By default, `Object.Vehicles.Aircraft` sources appear as drones and `Logistics.Vehicles` targets as taxis.
+- **Independent Targets**: Targets are retrieved by category and do not need to belong to a monitored entity (no `EntityName` is required).
+- **Several Elements per Alert**: An alert may list several sources or targets. Each element is drawn at its own position with the icon of its own category; elements without `GeoLocation` or without an associated icon are not drawn. Their tooltip shows "Position in alert: N of M". If the lists of an alert are not aligned (different lengths), the alert is ignored and a warning is written in the browser console.
 
 ### 3. Custom Rule Engine
 Users can define rules directly from the UI to control entity appearance:
 - **Percentage Rules**: Change color if High/Medium/Low alerts exceed a certain percentage of total alerts (e.g., "Turn Red if High Priority alerts >= 50%").
-- **Regex Rules**: Change color if an alert description matches a specific keyword (e.g., "Turn Red if description contains 'Drone'").
+- **Regex Rules**: Change color if an alert description matches a specific keyword or regular expression (e.g., "Turn Red if description contains 'Drone'"). The match is case-insensitive; if the text is not a valid regular expression it is searched as plain text.
 - **Rule Priority**: Rules are evaluated from top to bottom; the first matching rule determines the icon color.
 - **Dynamic Editing**: Rules can be added, modified, or deleted in real-time with immediate visual feedback.
 
-### 4. Advanced Drone Tracking
-- **Drone Path History**: Visualizes the movement history of detected drones with a configurable trail length.
-- **Position Trail**: Historical drone positions are shown with reduced opacity and connect to the target entity via dashed lines.
-- **Real-time Updates**: Drone positions update automatically based on incoming alert data within the selected time range.
+### 4. Source and Target Tracking
+- **Path History**: Visualizes the movement history of sources (e.g. drones) and targets with a configurable trail length. History can be enabled separately for sources and for targets.
+- **Position Trail**: Historical positions are shown with reduced opacity and connect to the entity via dashed lines.
+- **Real-time Updates**: Source and target positions update automatically based on incoming alert data within the selected time range.
 - **Configurable History**: Set the maximum number of past positions to display (default: 10).
+- **Independent Visibility**: Sources and targets can be shown or hidden independently from Global Settings.
 
 ### 5. Data Management & Import
 - **CSV Upload**: Bulk import entity definitions using a CSV file (semicolon-delimited).
@@ -62,7 +65,7 @@ Users can define rules directly from the UI to control entity appearance:
    | `Nationality` | Country/region code for the flag badge (ISO 3166-1 alpha-2 or exceptions such as `eu`, `un`) |
   | `Latitude` | Geographic latitude (-90 to 90) |
   | `Longitude` | Geographic longitude (-180 to 180) |
-  | `Icon` | Icon type (see [Icon Types](#12-multiple-icon-types)) |
+  | `Icon` | Name of an icon in the library (case-sensitive, see [Icon Library and Management](#13-icon-library-and-management)); it is not validated at import time and a missing icon is shown as a circle with a question mark |
    | `IconSize` | Marker size in pixels (≥ 0) |
   | `NamePosition` | Name label position: `Up`, `Down`, `Left`, `Right` |
   | `NameVisibleZoom` | Minimum zoom level to show the name (3–12) |
@@ -79,6 +82,7 @@ Users can define rules directly from the UI to control entity appearance:
 - **Incremental Modal Autosave**: Modal state is saved on slider/select/checkbox changes and on input blur events.
 - **Manual Reset**: Clear all data and start fresh using the "Reset Map" option in Global Settings.
 - **File-based Storage**: Map state is persisted server-side in `/tmp/prewikka_macro_map/map_state.json`.
+- **Custom Icons and Associations**: Uploaded icons are stored in `/tmp/prewikka_macro_map/custom_icons/` and icon associations in `/tmp/prewikka_macro_map/custom_bindings.json`. "Reset Map" does not delete them. Like the map state, they are lost if the container is recreated.
 
 ### 7. Map Position Controls
 - **Reset Position**: Instantly return to the default map view (Europe-centered).
@@ -88,7 +92,7 @@ Users can define rules directly from the UI to control entity appearance:
 ### 8. Zoom-based Visibility
 - **Smart Label Display**: Entity names appear only when zooming in beyond a configurable threshold (3-12).
 - **Badge Visibility Control**: Alert count badges can be configured to show/hide at specific zoom levels.
-- **Related Icon Visibility**: Drones and other related icons have independent zoom thresholds for optimal visibility.
+- **Related Icon Visibility**: Source and target icons have independent zoom thresholds for optimal visibility.
 
 ### 9. Context Actions
 Clicking a marker opens a context menu with the following options:
@@ -99,7 +103,7 @@ Clicking a marker opens a context menu with the following options:
 - **Actions > Center map on entity**: Pan the map to centre on the selected entity.
 - **Actions > Center and zoom map on entity**: Pan to the selected entity and apply a focused zoom level.
 - **Actions > Delete marker**: Remove the marker from the map.
-- **Report > Guard / Police / Fire Department**: Opens an Emergency Service Request modal pre-filled with today's date, a cause selector, and an optional message. *(Proof-of-concept only: the form does not submit to any backend — "Submit" just shows a confirmation message.)*
+- **Report > Guard / Police / Fire Department**: Open the Emergency Service Request form (proof of concept, static: "Submit" only shows a local confirmation and nothing is sent to a backend).
 
 ### 10. Macro/Micro Route Separation And Navigation Contract
 - **Separated route namespaces**: Macro and Micro features now use explicit, non-overlapping route families:
@@ -117,14 +121,17 @@ Clicking a marker opens a context menu with the following options:
 ### 11. Global Settings
 Access advanced configuration through the settings modal:
 
-**Drone History Tracking**
-- **Enable history tracking**: Toggle drone position trail recording on or off.
-- **Max past positions**: Configure the maximum number of past drone positions to display (default: 10).
+**Vector History Tracking**
+- **Enable history tracking**: Toggle the position trail of sources on or off.
+- **Enable target history tracking**: Toggle the position trail of targets on or off.
+- **Max past positions**: Configure the maximum number of past positions to display (default: 10).
 
 **Visual Settings**
-- **Map layer**: Switch base tiles between `OpenStreetMap` and `Voyager`.
+- **Map layer**: Select the base tiles. Only `OpenStreetMap` is currently offered: `Voyager` is disabled because CARTO now requires an API key (tiles are watermarked without one).
 - **Show entity names**: Globally toggle visibility of all entity name labels.
 - **Show alerts display**: Globally toggle visibility of all alert count badges.
+- **Show sources**: Globally toggle visibility of all source icons.
+- **Show targets**: Globally toggle visibility of all target icons.
 - **Apply global entity size**: Force a shared icon size for all entities.
 - **Global size**: Set the icon size value (in pixels) when global size is enabled.
 - **Alert badge font size**: Set the global font size used for alert badges.
@@ -140,25 +147,46 @@ Access advanced configuration through the settings modal:
 
 ### 12. Time-based Filtering
 - **Automatic Synchronization**: Alert queries respect the Prewikka global time range selector.
-- **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and drone positions.
-- **Manual Refresh**: A dedicated "Refresh data" button in the map controls re-fetches alert data on demand and updates only the entities whose data actually changed, without redrawing the rest of the map.
+- **Dynamic Updates**: Changing the time range automatically refreshes entity alert counts and source/target positions.
+- **Manual Refresh**: The "Refresh data" button of the map controls re-fetches the alert data on demand. Manual and automatic refreshes only redraw the entities whose alerts changed.
 
-### 13. Multiple Icon Types
-Supports the following infrastructure types with distinct SVG icons:
+### 13. Icon Library and Management
+Icons are SVG files, so the set can be extended from the UI without changing the source code. The **Manage Icons** button of the map controls opens the icon library.
 
-| Icon name | Description |
-|---|---|
-| `Administration` | Administrative/government facilities |
-| `Airport` | Aviation facilities |
-| `Bank` | Financial institutions |
-| `Hospital` | Healthcare facilities |
-| `Industry` | Industrial sites |
-| `Nuclear` | Nuclear energy facilities |
-| `Port` | Maritime port facilities |
-| `Radar` | Radar/surveillance installations |
-| `Telecom` | Telecommunications infrastructure |
-| `Water` | Water treatment/supply facilities |
-| `Drone` | Tracked drone/source events (used for related icons) |
+**Default icons** (read-only, shipped with the plugin in `htdocs/assets/default_icons/`):
+`Administration`, `Airport`, `Bank`, `Chemical`, `Church`, `Cultural`, `Defense`, `Digital`, `Drone`, `Education`, `Emergency`, `Energy`, `Finance`, `Grave`, `Health`, `Hospital`, `Industry`, `Mining`, `Nuclear`, `Port`, `Radar`, `Road`, `Taxi`, `Telecom`, `Television`, `Waste`, `Water`.
+
+**Custom icons** are uploaded from the UI and stored outside the package, so plugin updates and "Reset Map" do not remove them. A custom icon with the same name as a default one replaces it; deleting the custom icon restores the default.
+
+#### Library
+- **Grid**: one tile per icon, with a `Default` or `Custom` badge and one badge per association (Source/Target). Chips filter the grid by All, Default or Custom.
+- **Restore defaults**: deletes the custom icons that replace a default one (and their associations).
+- **Delete all custom**: deletes every custom icon and every custom association.
+
+#### Uploading an icon
+- **Form**: Name, Type, Category, optional starting file (the SVG can also be pasted), preview and an editable SVG text. What is saved is the text, after **Validate**.
+- **Validation**: performed by the server. Results are *ok*, *note*, *warning* or *error*. Elements that are not allowed are rejected (`script`, `foreignObject`, `style`, `image`, `iframe`, `use`, animations, `on*` attributes, external references, `DOCTYPE`/`ENTITY`). The `viewBox` is derived from `width`/`height` when missing, and a single fixed colour is converted to `currentColor`. An icon with several fixed colours is accepted with a warning because it will not follow the colour rules.
+- **Limits**: 50 KB per file; names use `A-Z a-z 0-9 _ -` (1–40 characters).
+- **Colour**: the colour of an icon comes from `currentColor` (or from shapes without `fill`), so entity icons follow the colour rules.
+- **Editing and deleting**: clicking a tile opens the same form with the name locked; custom icons can be deleted from it.
+
+#### Uploading several icons
+- **Upload multiple** opens a review table with one row per selected file (up to 50). Name, Type and Category are pre-filled and editable, and each row is validated by the server before anything is saved.
+- Blocking errors: duplicate names in the batch, the same Type + Category in two rows, invalid name or SVG error. A name that already exists is saved only if **Overwrite** is ticked.
+- Non-blocking warning: the chosen category is already associated with another icon.
+- **Confirm upload** saves the rows one by one; failed rows stay in the table and can be fixed and retried (**Retry failed**).
+
+#### Associating an icon with an alert category
+- **Type**: `Generic` (no association, default), `Source` or `Target`. For Source and Target, **Category** lists the IDMEFv2 `Source.Category` (155 values) or `Target.Category` (36 values) of schema V08.
+- Saving with a category creates or replaces the association; the form warns when the category is already associated with another icon. Saving with Type `Generic` removes all associations of the icon.
+- An association matches the exact category; if an element has several categories, the first one with an associated icon is used.
+- Default associations are listed in `htdocs/assets/idmef_icon_bindings.json` and can be replaced or hidden from the UI. Custom associations are stored in `custom_bindings.json`.
+- Deleting a custom icon, or restoring defaults, also removes its associations.
+
+#### Files that cannot be loaded
+- Files placed by hand in the icon folders are validated when the library is read; a file with an error is not loaded and the result is cached until the file changes.
+- A custom file that is not loaded appears in the grid as a red tile ("Not loaded", the reason is in the tooltip); clicking it opens the edit form with the file text so it can be fixed or deleted. Default files that are not loaded are listed in a banner at the top of the library.
+- If a marker uses an icon name that does not exist, it is drawn as a circle with a question mark, coloured like the other icons.
 
 ### 14. Infrastructure Links
 - **Visual connections**: Entities can be linked on the map with lines representing infrastructure dependencies, configured via the `LinksTo` CSV field.
@@ -173,6 +201,13 @@ Supports the following infrastructure types with distinct SVG icons:
 
 ### 16. Testing Resources (Development)
 - **Resources modal**: A development-only modal is available from the map controls to open external testing references.
+
+### 17. Code Organisation
+- **JavaScript**: split into classic global scripts in `htdocs/js/`, loaded in this order by the template: `macro_map_icons.js` (icon catalogue), `macro_map_utils.js` (pure helpers), `macro_map_api.js` (AJAX wrappers), `macro_map_related_icons.js` (source and target icons) and `macro_map.js` (main, `initializeMap()`).
+- **Python**: the view is composed of mixins (`db.py`, `views_presets.py`, `views_alerts.py`, `views_state.py`, `views_icons.py`) used by the `macroMapView` class in `macro_map.py`.
+- **Icon routes**: `/macro_map/get_icons`, `/macro_map/get_icon_bindings`, `/macro_map/validate_icon`, `/macro_map/save_icon`, `/macro_map/delete_icon`, `/macro_map/reset_icons`.
+- **Targets route**: `/macro_map/get_independent_targets_bulk`.
+- **Packaging**: new files are covered by `package_data` in `setup.py` (including `htdocs/assets/default_icons/*.svg` and `htdocs/assets/*.json`).
 
 ---
 
